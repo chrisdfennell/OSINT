@@ -72,31 +72,58 @@ function buildPopup(ac) {
     return html;
 }
 
+// Strategic points covering major global air traffic corridors
+const GLOBAL_HOTSPOTS = [
+    { lat: 40, lon: -74, radius: 250 },   // US Northeast (NYC)
+    { lat: 34, lon: -118, radius: 250 },   // US West (LA)
+    { lat: 41, lon: -88, radius: 250 },    // US Central (Chicago)
+    { lat: 33, lon: -84, radius: 250 },    // US Southeast (Atlanta)
+    { lat: 51, lon: 0, radius: 250 },      // UK/London
+    { lat: 48, lon: 2, radius: 250 },      // Europe West (Paris)
+    { lat: 50, lon: 10, radius: 250 },     // Europe Central (Germany)
+    { lat: 25, lon: 55, radius: 250 },     // Middle East (Dubai)
+    { lat: 35, lon: 140, radius: 250 },    // East Asia (Tokyo)
+    { lat: 1, lon: 104, radius: 250 },     // SE Asia (Singapore)
+    { lat: -33, lon: 151, radius: 250 },   // Australia (Sydney)
+    { lat: 19, lon: -99, radius: 250 },    // Mexico
+    { lat: -23, lon: -46, radius: 250 },   // South America (Sao Paulo)
+    { lat: 55, lon: 37, radius: 250 },     // Russia (Moscow)
+    { lat: 22, lon: 114, radius: 250 },    // China South (Hong Kong)
+    { lat: 49, lon: -123, radius: 250 },   // Canada West (Vancouver)
+];
+
 function getQueryPoints() {
     const bounds = map.getBounds();
-    const south = Math.max(bounds.getSouth(), -85);
-    const north = Math.min(bounds.getNorth(), 85);
-    const west = bounds.getWest();
-    const east = bounds.getEast();
-    const STEP = 8;
-    const points = [];
+    const zoom = map.getZoom();
 
-    const latSpan = north - south;
-    const lonSpan = east - west;
-    if (latSpan <= 12 && lonSpan <= 16) {
+    // Zoomed in close - single request centered on view
+    if (zoom >= 6) {
         const center = map.getCenter();
-        points.push({ lat: center.lat, lon: center.lng, radius: 250 });
-        return points;
+        return [{ lat: center.lat, lon: center.lng, radius: 250 }];
     }
 
-    for (let lat = south + STEP / 2; lat < north; lat += STEP) {
-        for (let lon = west + STEP / 2; lon < east; lon += STEP) {
-            points.push({ lat, lon: ((lon + 180) % 360) - 180, radius: 250 });
-            if (points.length >= 10) return points;
+    // Medium zoom - grid centered on visible area
+    if (zoom >= 4) {
+        const center = map.getCenter();
+        const points = [];
+        const STEP = 7;
+        const south = Math.max(bounds.getSouth(), -60);
+        const north = Math.min(bounds.getNorth(), 70);
+        const west = bounds.getWest();
+        const east = bounds.getEast();
+
+        for (let lat = south + STEP / 2; lat < north; lat += STEP) {
+            for (let lon = west + STEP / 2; lon < east; lon += STEP) {
+                points.push({ lat, lon: ((lon + 180) % 360) - 180, radius: 250 });
+                if (points.length >= 12) return points;
+            }
         }
+        return points.length > 0 ? points : [{ lat: center.lat, lon: center.lng, radius: 250 }];
     }
 
-    return points.length > 0 ? points : [{ lat: map.getCenter().lat, lon: map.getCenter().lng, radius: 250 }];
+    // Zoomed out wide (world view) - use strategic hotspots
+    // Only include hotspots that are visible on the map
+    return GLOBAL_HOTSPOTS.filter(pt => bounds.contains([pt.lat, pt.lon]));
 }
 
 async function fetchFlights() {
