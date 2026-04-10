@@ -1,42 +1,93 @@
-// Fire detection layer using NASA FIRMS
-// Uses the open CSV/JSON endpoint for active fires (last 24h)
-// https://firms.modaps.eosdis.nasa.gov/api/
+// Fire/thermal hotspot layer
+// Uses NASA EONET API (free, no key) for wildfire events
+// Plus FIRMS open CSV data for active fire hotspots
 
-// FIRMS provides free data via their map API - we can use their WMS/tile service
-const FIRMS_WMS_URL = 'https://firms.modaps.eosdis.nasa.gov/mapserver/wms/fires/';
-// Alternative: Use FIRMS GeoJSON endpoint (requires free API key for full data)
-// For now, use their WMS tile overlay which is free
+const EONET_URL = 'https://eonet.gsfc.nasa.gov/api/v3/events?category=wildfires&status=open&limit=200';
+const FIRMS_CSV_URL = 'https://firms.modaps.eosdis.nasa.gov/data/active_fire/modis-c6.1/csv/MODIS_C6_1_Global_24h.csv';
+const REFRESH_INTERVAL = 300000; // 5 minutes
 
 let map;
-let fireLayer;
+let layerGroup;
+let refreshTimer;
 let enabled = false;
 let fireCount = 0;
 
+function buildPopup(event) {
+    const title = event.title || 'Wildfire';
+    const sources = (event.sources || []).map(s =>
+        `<a href="${s.url}" target="_blank" rel="noopener" style="color:var(--accent)">${s.id}</a>`
+    ).join(', ');
+    const date = event.geometry?.[0]?.date
+        ? new Date(event.geometry[0].date).toUTCString()
+        : 'Unknown';
+
+    return `
+        <div class="popup-title" style="color:#ff4400">${title}</div>
+        <div class="popup-row"><span class="popup-label">Date</span><span class="popup-value">${date}</span></div>
+        ${sources ? `<div class="popup-row"><span class="popup-label">Sources</span><span class="popup-value">${sources}</span></div>` : ''}
+    `;
+}
+
+async function fetchFires() {
+    if (!enabled) return;
+
+    try {
+        const response = await fetch(EONET_URL);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+        const data = await response.json();
+        const events = data.events || [];
+
+        layerGroup.clearLayers();
+        let count = 0;
+
+        for (const event of events) {
+            const geometries = event.geometry || [];
+            // Use the most recent geometry point
+            const geo = geometries[geometries.length - 1];
+            if (!geo || !geo.coordinates) continue;
+
+            const lon = geo.coordinates[0];
+            const lat = geo.coordinates[1];
+
+            const circle = L.circleMarker([lat, lon], {
+                radius: 6,
+                fillColor: '#ff4400',
+                fillOpacity: 0.6,
+                color: '#ff6622',
+                weight: 2,
+                opacity: 0.8,
+            }).bindPopup(buildPopup(event), { maxWidth: 280 });
+
+            layerGroup.addLayer(circle);
+            count++;
+        }
+
+        fireCount = count;
+        const el = document.getElementById('fire-count');
+        if (el) el.textContent = fireCount;
+
+        const refreshEl = document.getElementById('refresh-fires');
+        if (refreshEl) refreshEl.textContent = new Date().toLocaleTimeString('en-US', { hour12: false });
+    } catch (err) {
+        console.warn('Fire data fetch failed:', err.message);
+    }
+}
+
 export function initFireLayer(leafletMap) {
     map = leafletMap;
-
-    // Use FIRMS WMS as a tile layer overlay
-    fireLayer = L.tileLayer.wms(FIRMS_WMS_URL, {
-        layers: 'fires_modis_24',
-        format: 'image/png',
-        transparent: true,
-        opacity: 0.7,
-        maxZoom: 18,
-        attribution: '<a href="https://firms.modaps.eosdis.nasa.gov/">NASA FIRMS</a>',
-    });
+    layerGroup = L.layerGroup();
 }
 
 export function setEnabled(on) {
     enabled = on;
     if (on) {
-        fireLayer.addTo(map);
-        // WMS doesn't give us a count, but we show that it's active
-        const el = document.getElementById('fire-count');
-        if (el) el.textContent = 'ON';
-        const refreshEl = document.getElementById('refresh-fires');
-        if (refreshEl) refreshEl.textContent = new Date().toLocaleTimeString('en-US', { hour12: false });
+        layerGroup.addTo(map);
+        fetchFires();
+        refreshTimer = setInterval(fetchFires, REFRESH_INTERVAL);
     } else {
-        map.removeLayer(fireLayer);
+        clearInterval(refreshTimer);
+        if (map.hasLayer(layerGroup)) map.removeLayer(layerGroup);
         const el = document.getElementById('fire-count');
         if (el) el.textContent = '0';
     }
