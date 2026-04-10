@@ -1,14 +1,14 @@
-// Flight tracking layer using airplanes.live API
-// Free, no API key, CORS-enabled, real-time ADS-B data
-// Docs: https://airplanes.live
+// Flight tracking layer using adsb.lol API
+// Free, no API key, browser CORS enabled, real-time ADS-B data
+// Docs: https://api.adsb.lol
 //
 // Endpoints:
 //   /v2/point/{lat}/{lon}/{radius_nmi} - aircraft near a point
 //   Radius max: 250 nautical miles
 
-const API_BASE = 'https://api.airplanes.live/v2';
-const REFRESH_INTERVAL = 8000;   // 8 seconds
-const MOVE_DEBOUNCE = 1500;      // 1.5s debounce on map pan
+const API_BASE = 'https://api.adsb.lol/v2';
+const REFRESH_INTERVAL = 15000;  // 15 seconds (be kind to free API)
+const MOVE_DEBOUNCE = 3000;      // 3s debounce on map pan
 
 let layerGroup;
 let refreshTimer;
@@ -87,23 +87,23 @@ function getQueryPoints() {
     const west = bounds.getWest();
     const east = bounds.getEast();
 
-    const STEP = 7; // degrees between grid points
+    const STEP = 8; // degrees between grid points (~250nmi radius overlap)
     const points = [];
 
     // If zoomed in enough that one request covers it, just use center
     const latSpan = north - south;
     const lonSpan = east - west;
-    if (latSpan <= 9 && lonSpan <= 12) {
+    if (latSpan <= 10 && lonSpan <= 14) {
         const center = map.getCenter();
         points.push({ lat: center.lat, lon: center.lng, radius: 250 });
         return points;
     }
 
-    // Build grid, cap at ~20 requests to avoid hammering the API
+    // Build grid, cap at 8 requests max to respect free API limits
     for (let lat = south + STEP / 2; lat < north; lat += STEP) {
         for (let lon = west + STEP / 2; lon < east; lon += STEP) {
             points.push({ lat, lon: ((lon + 180) % 360) - 180, radius: 250 });
-            if (points.length >= 20) return points;
+            if (points.length >= 8) return points;
         }
     }
 
@@ -118,9 +118,11 @@ async function fetchFlights() {
         const points = getQueryPoints();
         const seen = new Set(); // dedupe by hex code
 
-        // Fetch all grid points in parallel
+        // Fetch grid points with slight stagger to avoid rate limits
         const results = await Promise.allSettled(
-            points.map(async (pt) => {
+            points.map(async (pt, i) => {
+                // Stagger requests by 200ms each
+                if (i > 0) await new Promise(r => setTimeout(r, i * 200));
                 const url = `${API_BASE}/point/${pt.lat.toFixed(2)}/${pt.lon.toFixed(2)}/${pt.radius}`;
                 const res = await fetch(url);
                 if (!res.ok) return [];
