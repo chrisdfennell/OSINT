@@ -1,7 +1,7 @@
 import { initMap, setBaseMap } from './map.js';
 import { initFlightLayer, setEnabled as setFlightsEnabled } from './layers/flights.js';
 import { initEarthquakeLayer, setEnabled as setQuakesEnabled } from './layers/earthquakes.js';
-import { initWeatherLayers, setRadarEnabled, setCloudsEnabled, setWindEnabled, setTempEnabled } from './layers/weather.js';
+import { initWeatherLayers, setRadarEnabled, setCloudsEnabled, setWindEnabled, setTempEnabled, setOWMKey } from './layers/weather.js';
 import { initFireLayer, setEnabled as setFiresEnabled } from './layers/fires.js';
 import { tools } from './data/tools.js';
 import { categories } from './data/categories.js';
@@ -45,6 +45,9 @@ function init() {
 
     // Wire up sidebar toggle (mobile)
     setupSidebarToggle();
+
+    // Wire up OWM API key
+    setupOWMKey();
 
     // Render news & tools panels
     renderNewsSidebar();
@@ -145,6 +148,33 @@ function setupBaseMapSwitcher() {
             setBaseMap(e.target.value);
         });
     });
+}
+
+// ── OWM API Key ──
+function setupOWMKey() {
+    const input = document.getElementById('owm-key-input');
+    const btn = document.getElementById('owm-key-btn');
+
+    // Load saved key
+    const savedKey = localStorage.getItem('osint-owm-key');
+    if (savedKey) {
+        input.value = savedKey;
+        applyOWMKey(savedKey);
+    }
+
+    btn.addEventListener('click', () => {
+        const key = input.value.trim();
+        if (key) {
+            localStorage.setItem('osint-owm-key', key);
+            applyOWMKey(key);
+        }
+    });
+}
+
+function applyOWMKey(key) {
+    setOWMKey(key);
+    document.getElementById('layer-wind').disabled = false;
+    document.getElementById('layer-temp').disabled = false;
 }
 
 // ── Sidebar Toggle (Mobile) ──

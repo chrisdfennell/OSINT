@@ -205,6 +205,39 @@
     padding: 3px 0;
 }
 
+/* OWM key input */
+.owm-key-row {
+    display: flex;
+    gap: 4px;
+    padding: 4px 14px 8px;
+}
+
+.owm-key-input {
+    flex: 1;
+    padding: 4px 8px;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-size: 0.72rem;
+}
+
+.owm-key-input::placeholder { color: var(--text-muted); }
+.owm-key-input:focus { border-color: var(--accent); outline: none; }
+
+.owm-key-btn {
+    padding: 4px 10px;
+    background: var(--accent);
+    color: var(--bg-primary);
+    border: none;
+    border-radius: var(--radius-sm);
+    font-size: 0.72rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.owm-key-btn:hover { background: var(--accent-dim); }
+
 /* Tool search */
 .tool-search-input {
     width: calc(100% - 28px);

@@ -1,121 +1,180 @@
-// Weather tile layers from OpenWeatherMap (free tier)
-// Uses RainViewer for radar (free, no key needed)
-// Uses OpenWeatherMap for clouds/wind/temp (free tier with key)
+// Weather tile layers - all free, no API keys needed
+//
+// RainViewer: precipitation radar + satellite/infrared imagery
+//   Docs: https://www.rainviewer.com/api.html
+//   Completely free, no registration
+//
+// OpenWeatherMap: wind, temp, clouds, pressure tiles
+//   Free tier: 1000 calls/day, requires free API key
+//   We use a placeholder - users can add their own key
 
-// RainViewer is completely free and needs no API key
 const RAINVIEWER_API = 'https://api.rainviewer.com/public/weather-maps.json';
 
 let map;
-let radarLayer;
-let cloudLayer;
-let windLayer;
-let tempLayer;
-let rainviewerTimestamps = [];
+let radarLayer = null;
+let satelliteLayer = null;
+let windLayer = null;
+let tempLayer = null;
+let rainviewerData = null;
+let radarReady = false;
 
-async function getRainViewerTimestamps() {
+// ── RainViewer (free, no key) ──
+
+async function loadRainViewerData() {
     try {
         const response = await fetch(RAINVIEWER_API);
-        const data = await response.json();
-        rainviewerTimestamps = data.radar?.past || [];
-        return rainviewerTimestamps;
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        rainviewerData = await response.json();
+        radarReady = true;
+
+        // Build layers from latest timestamps
+        const radarTimes = rainviewerData.radar?.past || [];
+        const satTimes = rainviewerData.satellite?.infrared || [];
+
+        if (radarTimes.length > 0) {
+            const latest = radarTimes[radarTimes.length - 1];
+            radarLayer = L.tileLayer(
+                `${rainviewerData.host}/v2/radar/${latest.time}/256/{z}/{x}/{y}/6/1_1.png`,
+                {
+                    opacity: 0.65,
+                    maxZoom: 18,
+                    zIndex: 100,
+                    attribution: '<a href="https://www.rainviewer.com/">RainViewer</a>',
+                }
+            );
+        }
+
+        if (satTimes.length > 0) {
+            const latest = satTimes[satTimes.length - 1];
+            satelliteLayer = L.tileLayer(
+                `${rainviewerData.host}/v2/satellite/${latest.time}/256/{z}/{x}/{y}/0/0_0.png`,
+                {
+                    opacity: 0.5,
+                    maxZoom: 18,
+                    zIndex: 99,
+                    attribution: '<a href="https://www.rainviewer.com/">RainViewer</a>',
+                }
+            );
+        }
     } catch (err) {
-        console.warn('RainViewer API failed:', err.message);
-        return [];
+        console.warn('RainViewer data load failed:', err.message);
     }
 }
 
-function createRainViewerLayer(timestamp) {
-    return L.tileLayer(
-        `https://tilecache.rainviewer.com/v2/radar/${timestamp}/256/{z}/{x}/{y}/4/1_1.png`,
-        {
-            opacity: 0.6,
-            maxZoom: 18,
-            attribution: '<a href="https://www.rainviewer.com/">RainViewer</a>',
-        }
-    );
+// Refresh RainViewer data every 5 minutes (new radar frames)
+function startRainViewerRefresh() {
+    setInterval(async () => {
+        const wasRadarOn = radarLayer && map.hasLayer(radarLayer);
+        const wasSatOn = satelliteLayer && map.hasLayer(satelliteLayer);
+
+        // Remove old layers
+        if (radarLayer && map.hasLayer(radarLayer)) map.removeLayer(radarLayer);
+        if (satelliteLayer && map.hasLayer(satelliteLayer)) map.removeLayer(satelliteLayer);
+
+        // Reload data and rebuild layers
+        await loadRainViewerData();
+
+        // Re-add if they were enabled
+        if (wasRadarOn && radarLayer) radarLayer.addTo(map);
+        if (wasSatOn && satelliteLayer) satelliteLayer.addTo(map);
+    }, 300000);
 }
 
-// OpenWeatherMap free tile layers (limited but functional without key)
-// Using OpenWeatherMap 1.0 tiles which work without API key for basic layers
-function createOWMLayer(layerName) {
-    // OWM 1.0 tiles - these require an API key now, so we'll use alternatives
-    // For clouds: use a free tile source
-    const urls = {
-        clouds: 'https://tile.openweathermap.org/map/clouds_new/{z}/{x}/{y}.png?appid=',
-        wind: 'https://tile.openweathermap.org/map/wind_new/{z}/{x}/{y}.png?appid=',
-        temp: 'https://tile.openweathermap.org/map/temp_new/{z}/{x}/{y}.png?appid=',
-    };
+// ── Wind & Temperature (using free tile sources) ──
+// Using OpenWeatherMap-compatible free tiles from open sources
 
-    // Since OWM requires API key, we'll use RainViewer for radar
-    // and simple tile overlays for visual reference
+function createWindLayer() {
+    // Use a proxy-free wind tile source
+    // Windy tiles aren't directly available, but we can use OWM free tier
+    // For now, show a message that this needs an OWM API key
+    // Users can get one free at https://openweathermap.org/api
     return null;
 }
 
-export function initWeatherLayers(leafletMap) {
-    map = leafletMap;
-
-    // Initialize radar from RainViewer (free, no key)
-    initRadar();
+function createTempLayer() {
+    return null;
 }
 
-async function initRadar() {
-    const timestamps = await getRainViewerTimestamps();
-    if (timestamps.length > 0) {
-        const latest = timestamps[timestamps.length - 1];
-        radarLayer = createRainViewerLayer(latest.time);
-    }
+// ── Exports ──
+
+export function initWeatherLayers(leafletMap) {
+    map = leafletMap;
+    loadRainViewerData();
+    startRainViewerRefresh();
 }
 
 export function setRadarEnabled(on) {
-    if (!radarLayer) return;
     if (on) {
-        radarLayer.addTo(map);
-    } else {
+        if (radarLayer) {
+            radarLayer.addTo(map);
+        } else if (!radarReady) {
+            // Data hasn't loaded yet - wait and retry
+            const check = setInterval(() => {
+                if (radarLayer) {
+                    radarLayer.addTo(map);
+                    clearInterval(check);
+                }
+            }, 500);
+            // Give up after 10 seconds
+            setTimeout(() => clearInterval(check), 10000);
+        }
+    } else if (radarLayer && map.hasLayer(radarLayer)) {
         map.removeLayer(radarLayer);
     }
 }
 
 export function setCloudsEnabled(on) {
-    // Using a free cloud tile source
+    // Clouds = satellite infrared from RainViewer
     if (on) {
-        if (!cloudLayer) {
-            // Use CartoDB positron labels-only as a lightweight "cloud-like" overlay
-            // For real clouds, users would need an OWM API key
-            cloudLayer = L.tileLayer(
-                'https://tile.openweathermap.org/map/clouds_new/{z}/{x}/{y}.png?appid=9de243494c0b295cca9337e1e96b00e0',
-                { opacity: 0.5, maxZoom: 18 }
-            );
+        if (satelliteLayer) {
+            satelliteLayer.addTo(map);
+        } else if (!radarReady) {
+            const check = setInterval(() => {
+                if (satelliteLayer) {
+                    satelliteLayer.addTo(map);
+                    clearInterval(check);
+                }
+            }, 500);
+            setTimeout(() => clearInterval(check), 10000);
         }
-        cloudLayer.addTo(map);
-    } else if (cloudLayer) {
-        map.removeLayer(cloudLayer);
+    } else if (satelliteLayer && map.hasLayer(satelliteLayer)) {
+        map.removeLayer(satelliteLayer);
     }
 }
 
 export function setWindEnabled(on) {
-    if (on) {
-        if (!windLayer) {
-            windLayer = L.tileLayer(
-                'https://tile.openweathermap.org/map/wind_new/{z}/{x}/{y}.png?appid=9de243494c0b295cca9337e1e96b00e0',
-                { opacity: 0.5, maxZoom: 18 }
-            );
-        }
+    if (on && !windLayer) {
+        console.info('Wind layer requires an OpenWeatherMap API key. Get a free one at https://openweathermap.org/api');
+    }
+    if (on && windLayer) {
         windLayer.addTo(map);
-    } else if (windLayer) {
+    } else if (windLayer && map.hasLayer(windLayer)) {
         map.removeLayer(windLayer);
     }
 }
 
 export function setTempEnabled(on) {
-    if (on) {
-        if (!tempLayer) {
-            tempLayer = L.tileLayer(
-                'https://tile.openweathermap.org/map/temp_new/{z}/{x}/{y}.png?appid=9de243494c0b295cca9337e1e96b00e0',
-                { opacity: 0.5, maxZoom: 18 }
-            );
-        }
+    if (on && !tempLayer) {
+        console.info('Temperature layer requires an OpenWeatherMap API key. Get a free one at https://openweathermap.org/api');
+    }
+    if (on && tempLayer) {
         tempLayer.addTo(map);
-    } else if (tempLayer) {
+    } else if (tempLayer && map.hasLayer(tempLayer)) {
         map.removeLayer(tempLayer);
     }
+}
+
+// Allow users to set an OWM API key at runtime
+export function setOWMKey(apiKey) {
+    if (!apiKey) return;
+
+    windLayer = L.tileLayer(
+        `https://tile.openweathermap.org/map/wind_new/{z}/{x}/{y}.png?appid=${apiKey}`,
+        { opacity: 0.5, maxZoom: 18, zIndex: 98 }
+    );
+
+    tempLayer = L.tileLayer(
+        `https://tile.openweathermap.org/map/temp_new/{z}/{x}/{y}.png?appid=${apiKey}`,
+        { opacity: 0.5, maxZoom: 18, zIndex: 97 }
+    );
 }
