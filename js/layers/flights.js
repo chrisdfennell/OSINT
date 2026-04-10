@@ -1,13 +1,14 @@
-// Flight tracking layer using adsb.lol API
-// Free, no API key, browser CORS enabled, real-time ADS-B data
-// Docs: https://api.adsb.lol
+// Flight tracking layer using adsb.lol API via CORS proxy
+// adsb.lol is free, no API key, but has no CORS headers,
+// so we route through allorigins.win (adds Access-Control-Allow-Origin: *)
 //
 // Endpoints:
 //   /v2/point/{lat}/{lon}/{radius_nmi} - aircraft near a point
 //   Radius max: 250 nautical miles
 
-const API_BASE = 'https://api.adsb.lol/v2';
-const REFRESH_INTERVAL = 15000;  // 15 seconds (be kind to free API)
+const ADSB_BASE = 'https://api.adsb.lol/v2';
+const PROXY = 'https://api.allorigins.win/raw?url=';
+const REFRESH_INTERVAL = 20000;  // 20 seconds (proxy caches ~5min anyway)
 const MOVE_DEBOUNCE = 3000;      // 3s debounce on map pan
 
 let layerGroup;
@@ -87,23 +88,23 @@ function getQueryPoints() {
     const west = bounds.getWest();
     const east = bounds.getEast();
 
-    const STEP = 8; // degrees between grid points (~250nmi radius overlap)
+    const STEP = 9; // degrees between grid points (~250nmi radius with overlap)
     const points = [];
 
     // If zoomed in enough that one request covers it, just use center
     const latSpan = north - south;
     const lonSpan = east - west;
-    if (latSpan <= 10 && lonSpan <= 14) {
+    if (latSpan <= 12 && lonSpan <= 16) {
         const center = map.getCenter();
         points.push({ lat: center.lat, lon: center.lng, radius: 250 });
         return points;
     }
 
-    // Build grid, cap at 8 requests max to respect free API limits
+    // Build grid, cap at 6 requests max (proxy adds latency)
     for (let lat = south + STEP / 2; lat < north; lat += STEP) {
         for (let lon = west + STEP / 2; lon < east; lon += STEP) {
             points.push({ lat, lon: ((lon + 180) % 360) - 180, radius: 250 });
-            if (points.length >= 8) return points;
+            if (points.length >= 6) return points;
         }
     }
 
@@ -123,8 +124,8 @@ async function fetchFlights() {
             points.map(async (pt, i) => {
                 // Stagger requests by 200ms each
                 if (i > 0) await new Promise(r => setTimeout(r, i * 200));
-                const url = `${API_BASE}/point/${pt.lat.toFixed(2)}/${pt.lon.toFixed(2)}/${pt.radius}`;
-                const res = await fetch(url);
+                const adsbUrl = `${ADSB_BASE}/point/${pt.lat.toFixed(2)}/${pt.lon.toFixed(2)}/${pt.radius}`;
+                const res = await fetch(`${PROXY}${encodeURIComponent(adsbUrl)}`);
                 if (!res.ok) return [];
                 const data = await res.json();
                 return data.ac || [];
