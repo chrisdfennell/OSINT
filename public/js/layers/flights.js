@@ -1,13 +1,11 @@
-// Flight tracking layer using local API proxy -> adsb.lol
-// No CORS issues since requests go to our own server
+// Flight tracking layer
+// Server fetches from 30+ global hotspots, deduplicates, and caches.
+// Frontend just fetches /api/flights/all - all aircraft in one response.
 
-const API_BASE = '/api/flights';
-const REFRESH_INTERVAL = 10000;
-const MOVE_DEBOUNCE = 2000;
+const REFRESH_INTERVAL = 10000; // 10 seconds
 
 let layerGroup;
 let refreshTimer;
-let moveDebounceTimer;
 let map;
 let enabled = true;
 let aircraftCount = 0;
@@ -72,107 +70,41 @@ function buildPopup(ac) {
     return html;
 }
 
-// Strategic points covering major global air traffic corridors
-const GLOBAL_HOTSPOTS = [
-    { lat: 40, lon: -74, radius: 250 },   // US Northeast (NYC)
-    { lat: 34, lon: -118, radius: 250 },   // US West (LA)
-    { lat: 41, lon: -88, radius: 250 },    // US Central (Chicago)
-    { lat: 33, lon: -84, radius: 250 },    // US Southeast (Atlanta)
-    { lat: 51, lon: 0, radius: 250 },      // UK/London
-    { lat: 48, lon: 2, radius: 250 },      // Europe West (Paris)
-    { lat: 50, lon: 10, radius: 250 },     // Europe Central (Germany)
-    { lat: 25, lon: 55, radius: 250 },     // Middle East (Dubai)
-    { lat: 35, lon: 140, radius: 250 },    // East Asia (Tokyo)
-    { lat: 1, lon: 104, radius: 250 },     // SE Asia (Singapore)
-    { lat: -33, lon: 151, radius: 250 },   // Australia (Sydney)
-    { lat: 19, lon: -99, radius: 250 },    // Mexico
-    { lat: -23, lon: -46, radius: 250 },   // South America (Sao Paulo)
-    { lat: 55, lon: 37, radius: 250 },     // Russia (Moscow)
-    { lat: 22, lon: 114, radius: 250 },    // China South (Hong Kong)
-    { lat: 49, lon: -123, radius: 250 },   // Canada West (Vancouver)
-];
-
-function getQueryPoints() {
-    const bounds = map.getBounds();
-    const zoom = map.getZoom();
-
-    // Zoomed in close - single request centered on view
-    if (zoom >= 6) {
-        const center = map.getCenter();
-        return [{ lat: center.lat, lon: center.lng, radius: 250 }];
-    }
-
-    // Medium zoom - grid centered on visible area
-    if (zoom >= 4) {
-        const center = map.getCenter();
-        const points = [];
-        const STEP = 7;
-        const south = Math.max(bounds.getSouth(), -60);
-        const north = Math.min(bounds.getNorth(), 70);
-        const west = bounds.getWest();
-        const east = bounds.getEast();
-
-        for (let lat = south + STEP / 2; lat < north; lat += STEP) {
-            for (let lon = west + STEP / 2; lon < east; lon += STEP) {
-                points.push({ lat, lon: ((lon + 180) % 360) - 180, radius: 250 });
-                if (points.length >= 12) return points;
-            }
-        }
-        return points.length > 0 ? points : [{ lat: center.lat, lon: center.lng, radius: 250 }];
-    }
-
-    // Zoomed out wide (world view) - use strategic hotspots
-    // Only include hotspots that are visible on the map
-    return GLOBAL_HOTSPOTS.filter(pt => bounds.contains([pt.lat, pt.lon]));
-}
-
 async function fetchFlights() {
     if (!enabled || fetching) return;
     fetching = true;
 
     try {
-        const points = getQueryPoints();
-        const seen = new Set();
-
-        const results = await Promise.allSettled(
-            points.map(async (pt, i) => {
-                if (i > 0) await new Promise(r => setTimeout(r, i * 150));
-                const url = `${API_BASE}/${pt.lat.toFixed(2)}/${pt.lon.toFixed(2)}/${pt.radius}`;
-                const res = await fetch(url);
-                if (!res.ok) return [];
-                const data = await res.json();
-                return data.ac || [];
-            })
-        );
+        const res = await fetch('/api/flights/all');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const aircraft = data.ac || [];
 
         layerGroup.clearLayers();
         let count = 0;
 
-        for (const result of results) {
-            if (result.status !== 'fulfilled') continue;
-            for (const ac of result.value) {
-                if (seen.has(ac.hex)) continue;
-                seen.add(ac.hex);
+        for (const ac of aircraft) {
+            const lat = ac.lat;
+            const lon = ac.lon;
+            if (lat == null || lon == null) continue;
 
-                const lat = ac.lat;
-                const lon = ac.lon;
-                if (lat == null || lon == null) continue;
+            const heading = ac.track;
+            const onGround = ac.alt_baro === 'ground';
+            const emergency = ac.emergency && ac.emergency !== 'none';
+            const icon = createAircraftIcon(heading, onGround, emergency);
 
-                const heading = ac.track;
-                const onGround = ac.alt_baro === 'ground';
-                const emergency = ac.emergency && ac.emergency !== 'none';
-                const icon = createAircraftIcon(heading, onGround, emergency);
+            const marker = L.marker([lat, lon], { icon })
+                .bindPopup(buildPopup(ac), { maxWidth: 300 });
 
-                const marker = L.marker([lat, lon], { icon })
-                    .bindPopup(buildPopup(ac), { maxWidth: 300 });
-
-                layerGroup.addLayer(marker);
-                count++;
-            }
+            layerGroup.addLayer(marker);
+            count++;
         }
 
         aircraftCount = count;
-        updateUI();
+        const el = document.getElementById('flight-count');
+        if (el) el.textContent = aircraftCount.toLocaleString();
+        const refreshEl = document.getElementById('refresh-flights');
+        if (refreshEl) refreshEl.textContent = new Date().toLocaleTimeString('en-US', { hour12: false });
     } catch (err) {
         console.warn('Flight data fetch failed:', err.message);
     } finally {
@@ -180,23 +112,11 @@ async function fetchFlights() {
     }
 }
 
-function updateUI() {
-    const el = document.getElementById('flight-count');
-    if (el) el.textContent = aircraftCount.toLocaleString();
-    const refreshEl = document.getElementById('refresh-flights');
-    if (refreshEl) refreshEl.textContent = new Date().toLocaleTimeString('en-US', { hour12: false });
-}
-
 export function initFlightLayer(leafletMap) {
     map = leafletMap;
     layerGroup = L.layerGroup().addTo(map);
     fetchFlights();
     refreshTimer = setInterval(fetchFlights, REFRESH_INTERVAL);
-    map.on('moveend', () => {
-        if (!enabled) return;
-        clearTimeout(moveDebounceTimer);
-        moveDebounceTimer = setTimeout(fetchFlights, MOVE_DEBOUNCE);
-    });
 }
 
 export function setEnabled(on) {
