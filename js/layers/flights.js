@@ -77,45 +77,83 @@ function buildPopup(ac) {
     return html;
 }
 
+// Build a grid of query points to cover the visible map area.
+// Each request covers a 250nmi radius (~463km). Diameter ~926km ≈ 8.3° lat.
+// We use ~7° steps to overlap slightly for full coverage.
+function getQueryPoints() {
+    const bounds = map.getBounds();
+    const south = Math.max(bounds.getSouth(), -85);
+    const north = Math.min(bounds.getNorth(), 85);
+    const west = bounds.getWest();
+    const east = bounds.getEast();
+
+    const STEP = 7; // degrees between grid points
+    const points = [];
+
+    // If zoomed in enough that one request covers it, just use center
+    const latSpan = north - south;
+    const lonSpan = east - west;
+    if (latSpan <= 9 && lonSpan <= 12) {
+        const center = map.getCenter();
+        points.push({ lat: center.lat, lon: center.lng, radius: 250 });
+        return points;
+    }
+
+    // Build grid, cap at ~20 requests to avoid hammering the API
+    for (let lat = south + STEP / 2; lat < north; lat += STEP) {
+        for (let lon = west + STEP / 2; lon < east; lon += STEP) {
+            points.push({ lat, lon: ((lon + 180) % 360) - 180, radius: 250 });
+            if (points.length >= 20) return points;
+        }
+    }
+
+    return points.length > 0 ? points : [{ lat: map.getCenter().lat, lon: map.getCenter().lng, radius: 250 }];
+}
+
 async function fetchFlights() {
     if (!enabled || fetching) return;
     fetching = true;
 
     try {
-        const center = map.getCenter();
-        const bounds = map.getBounds();
+        const points = getQueryPoints();
+        const seen = new Set(); // dedupe by hex code
 
-        // Calculate radius in nautical miles (max 250)
-        const ne = bounds.getNorthEast();
-        const distKm = center.distanceTo(ne) / 1000;
-        const distNmi = Math.min(Math.round(distKm / 1.852), 250);
-
-        const url = `${API_BASE}/point/${center.lat.toFixed(4)}/${center.lng.toFixed(4)}/${distNmi}`;
-        const response = await fetch(url);
-
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-        const data = await response.json();
-        const aircraft = data.ac || [];
+        // Fetch all grid points in parallel
+        const results = await Promise.allSettled(
+            points.map(async (pt) => {
+                const url = `${API_BASE}/point/${pt.lat.toFixed(2)}/${pt.lon.toFixed(2)}/${pt.radius}`;
+                const res = await fetch(url);
+                if (!res.ok) return [];
+                const data = await res.json();
+                return data.ac || [];
+            })
+        );
 
         layerGroup.clearLayers();
         let count = 0;
 
-        for (const ac of aircraft) {
-            const lat = ac.lat;
-            const lon = ac.lon;
-            if (lat == null || lon == null) continue;
+        for (const result of results) {
+            if (result.status !== 'fulfilled') continue;
+            for (const ac of result.value) {
+                // Deduplicate - same aircraft can appear in overlapping circles
+                if (seen.has(ac.hex)) continue;
+                seen.add(ac.hex);
 
-            const heading = ac.track;
-            const onGround = ac.alt_baro === 'ground';
-            const emergency = ac.emergency && ac.emergency !== 'none';
-            const icon = createAircraftIcon(heading, onGround, emergency);
+                const lat = ac.lat;
+                const lon = ac.lon;
+                if (lat == null || lon == null) continue;
 
-            const marker = L.marker([lat, lon], { icon })
-                .bindPopup(buildPopup(ac), { maxWidth: 300 });
+                const heading = ac.track;
+                const onGround = ac.alt_baro === 'ground';
+                const emergency = ac.emergency && ac.emergency !== 'none';
+                const icon = createAircraftIcon(heading, onGround, emergency);
 
-            layerGroup.addLayer(marker);
-            count++;
+                const marker = L.marker([lat, lon], { icon })
+                    .bindPopup(buildPopup(ac), { maxWidth: 300 });
+
+                layerGroup.addLayer(marker);
+                count++;
+            }
         }
 
         aircraftCount = count;
