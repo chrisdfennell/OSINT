@@ -3,6 +3,8 @@ import { initFlightLayer, setEnabled as setFlightsEnabled } from './layers/fligh
 import { initEarthquakeLayer, setEnabled as setQuakesEnabled } from './layers/earthquakes.js';
 import { initWeatherLayers, setRadarEnabled, setCloudsEnabled, setWindEnabled, setTempEnabled, setOWMKey } from './layers/weather.js';
 import { initFireLayer, setEnabled as setFiresEnabled } from './layers/fires.js';
+import { initVesselLayer, setEnabled as setVesselsEnabled } from './layers/vessels.js';
+import { showToast } from './toast.js';
 import { tools } from './data/tools.js';
 import { categories } from './data/categories.js';
 
@@ -33,6 +35,7 @@ function init() {
     initEarthquakeLayer(map);
     initWeatherLayers(map);
     initFireLayer(map);
+    initVesselLayer(map);
 
     // Wire up layer toggles
     setupLayerToggles();
@@ -124,6 +127,10 @@ function setupLayerToggles() {
         setFiresEnabled(e.target.checked);
     });
 
+    document.getElementById('layer-vessels').addEventListener('change', (e) => {
+        setVesselsEnabled(e.target.checked);
+    });
+
     document.getElementById('layer-weather').addEventListener('change', (e) => {
         setRadarEnabled(e.target.checked);
     });
@@ -150,31 +157,15 @@ function setupBaseMapSwitcher() {
     });
 }
 
-// ── OWM API Key ──
-function setupOWMKey() {
-    const input = document.getElementById('owm-key-input');
-    const btn = document.getElementById('owm-key-btn');
-
-    // Load saved key
-    const savedKey = localStorage.getItem('osint-owm-key');
-    if (savedKey) {
-        input.value = savedKey;
-        applyOWMKey(savedKey);
-    }
-
-    btn.addEventListener('click', () => {
-        const key = input.value.trim();
-        if (key) {
-            localStorage.setItem('osint-owm-key', key);
-            applyOWMKey(key);
+// ── OWM API Key (auto-loaded from server .env) ──
+async function setupOWMKey() {
+    try {
+        const res = await fetch('/api/config/owm');
+        if (res.ok) {
+            const data = await res.json();
+            if (data.key) setOWMKey(data.key);
         }
-    });
-}
-
-function applyOWMKey(key) {
-    setOWMKey(key);
-    document.getElementById('layer-wind').disabled = false;
-    document.getElementById('layer-temp').disabled = false;
+    } catch { /* server not available */ }
 }
 
 // ── Sidebar Toggle (Mobile) ──

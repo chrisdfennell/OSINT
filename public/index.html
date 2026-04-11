@@ -87,6 +87,15 @@
                     </label>
 
                     <label class="layer-toggle">
+                        <input type="checkbox" id="layer-vessels">
+                        <span class="layer-icon" style="color: #44cc88">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 20l.8-2.8A2 2 0 0 1 4.7 16h14.6a2 2 0 0 1 1.9 1.2L22 20"/><path d="M4 16l-1.4-5.2A1 1 0 0 1 3.6 9.6L12 6l8.4 3.6a1 1 0 0 1 1 1.2L20 16"/><path d="M12 6V2"/></svg>
+                        </span>
+                        <span class="layer-name">Ships (AIS)</span>
+                        <span class="layer-count" id="vessel-count">0</span>
+                    </label>
+
+                    <label class="layer-toggle">
                         <input type="checkbox" id="layer-weather">
                         <span class="layer-icon" style="color: #ffcc00">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M19 16.9A5 5 0 0 0 18 7h-1.26a8 8 0 1 0-11.62 9"/><polyline points="13 11 9 17 15 17 11 23"/></svg>
@@ -103,15 +112,10 @@
                     </label>
 
                     <div class="sidebar-divider"></div>
-                    <div class="sidebar-section-label">OWM LAYERS (need API key)</div>
-
-                    <div class="owm-key-row">
-                        <input type="text" id="owm-key-input" class="owm-key-input" placeholder="OpenWeatherMap API key">
-                        <button type="button" id="owm-key-btn" class="owm-key-btn">Set</button>
-                    </div>
+                    <div class="sidebar-section-label">OWM LAYERS</div>
 
                     <label class="layer-toggle">
-                        <input type="checkbox" id="layer-wind" disabled>
+                        <input type="checkbox" id="layer-wind">
                         <span class="layer-icon" style="color: #44bbff">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9.59 4.59A2 2 0 1 1 11 8H2m10.59 11.41A2 2 0 1 0 14 16H2m15.73-8.27A2.5 2.5 0 1 1 19.5 12H2"/></svg>
                         </span>
@@ -119,7 +123,7 @@
                     </label>
 
                     <label class="layer-toggle">
-                        <input type="checkbox" id="layer-temp" disabled>
+                        <input type="checkbox" id="layer-temp">
                         <span class="layer-icon" style="color: #ff6688">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/></svg>
                         </span>
@@ -156,6 +160,10 @@
                         <div class="refresh-row">
                             <span>Fires</span>
                             <span id="refresh-fires">--</span>
+                        </div>
+                        <div class="refresh-row">
+                            <span>Ships</span>
+                            <span id="refresh-vessels">--</span>
                         </div>
                     </div>
                 </div>

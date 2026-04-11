@@ -8,6 +8,8 @@
 //   Free tier: 1000 calls/day, requires free API key
 //   We use a placeholder - users can add their own key
 
+import { showToast } from '../toast.js';
+
 const RAINVIEWER_API = '/api/weather/rainviewer';
 
 let map;
@@ -34,7 +36,7 @@ async function loadRainViewerData() {
         if (radarTimes.length > 0) {
             const latest = radarTimes[radarTimes.length - 1];
             radarLayer = L.tileLayer(
-                `${rainviewerData.host}/v2/radar/${latest.time}/256/{z}/{x}/{y}/6/1_1.png`,
+                `${rainviewerData.host}${latest.path}/256/{z}/{x}/{y}/6/1_1.png`,
                 {
                     opacity: 0.65,
                     maxZoom: 18,
@@ -47,7 +49,7 @@ async function loadRainViewerData() {
         if (satTimes.length > 0) {
             const latest = satTimes[satTimes.length - 1];
             satelliteLayer = L.tileLayer(
-                `${rainviewerData.host}/v2/satellite/${latest.time}/256/{z}/{x}/{y}/0/0_0.png`,
+                `${rainviewerData.host}${latest.path}/256/{z}/{x}/{y}/0/0_0.png`,
                 {
                     opacity: 0.5,
                     maxZoom: 18,
@@ -58,6 +60,7 @@ async function loadRainViewerData() {
         }
     } catch (err) {
         console.warn('RainViewer data load failed:', err.message);
+        showToast('Weather radar unavailable', 'warn');
     }
 }
 
@@ -144,7 +147,7 @@ export function setCloudsEnabled(on) {
 
 export function setWindEnabled(on) {
     if (on && !windLayer) {
-        console.info('Wind layer requires an OpenWeatherMap API key. Get a free one at https://openweathermap.org/api');
+        showToast('Wind layer requires an OpenWeatherMap API key', 'info');
     }
     if (on && windLayer) {
         windLayer.addTo(map);
@@ -155,7 +158,7 @@ export function setWindEnabled(on) {
 
 export function setTempEnabled(on) {
     if (on && !tempLayer) {
-        console.info('Temperature layer requires an OpenWeatherMap API key. Get a free one at https://openweathermap.org/api');
+        showToast('Temperature layer requires an OpenWeatherMap API key', 'info');
     }
     if (on && tempLayer) {
         tempLayer.addTo(map);
@@ -170,11 +173,11 @@ export function setOWMKey(apiKey) {
 
     windLayer = L.tileLayer(
         `https://tile.openweathermap.org/map/wind_new/{z}/{x}/{y}.png?appid=${apiKey}`,
-        { opacity: 0.5, maxZoom: 18, zIndex: 98 }
+        { opacity: 0.5, maxZoom: 18, maxNativeZoom: 6, zIndex: 98 }
     );
 
     tempLayer = L.tileLayer(
         `https://tile.openweathermap.org/map/temp_new/{z}/{x}/{y}.png?appid=${apiKey}`,
-        { opacity: 0.5, maxZoom: 18, zIndex: 97 }
+        { opacity: 0.5, maxZoom: 18, maxNativeZoom: 6, zIndex: 97 }
     );
 }

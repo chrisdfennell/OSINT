@@ -1,6 +1,8 @@
 // Earthquake layer using USGS GeoJSON feed
 // Docs: https://earthquake.usgs.gov/earthquakes/feed/v1.0/geojson.php
 
+import { showToast } from '../toast.js';
+
 const FEED_URL = '/api/earthquakes';
 const REFRESH_INTERVAL = 120000; // 2 minutes
 
@@ -98,6 +100,7 @@ async function fetchEarthquakes() {
         if (refreshEl) refreshEl.textContent = new Date().toLocaleTimeString('en-US', { hour12: false });
     } catch (err) {
         console.warn('Earthquake data fetch failed:', err.message);
+        showToast('Earthquake data unavailable', 'warn');
     }
 }
 

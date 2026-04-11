@@ -205,39 +205,6 @@
     padding: 3px 0;
 }
 
-/* OWM key input */
-.owm-key-row {
-    display: flex;
-    gap: 4px;
-    padding: 4px 14px 8px;
-}
-
-.owm-key-input {
-    flex: 1;
-    padding: 4px 8px;
-    background: var(--bg-input);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    color: var(--text-primary);
-    font-size: 0.72rem;
-}
-
-.owm-key-input::placeholder { color: var(--text-muted); }
-.owm-key-input:focus { border-color: var(--accent); outline: none; }
-
-.owm-key-btn {
-    padding: 4px 10px;
-    background: var(--accent);
-    color: var(--bg-primary);
-    border: none;
-    border-radius: var(--radius-sm);
-    font-size: 0.72rem;
-    font-weight: 600;
-    cursor: pointer;
-}
-
-.owm-key-btn:hover { background: var(--accent-dim); }
-
 /* Tool search */
 .tool-search-input {
     width: calc(100% - 28px);
@@ -416,6 +383,49 @@
 
 .popup-label { color: var(--text-muted); }
 .popup-value { color: var(--text-primary); font-weight: 500; }
+
+.popup-aircraft-photo {
+    width: 100%;
+    max-height: 140px;
+    object-fit: cover;
+    border-radius: var(--radius-sm);
+    margin-bottom: 8px;
+    display: block;
+    background: var(--bg-tertiary);
+}
+
+.popup-military-badge {
+    display: inline-block;
+    font-size: 0.6rem;
+    font-weight: 700;
+    letter-spacing: 1px;
+    color: #fff;
+    background: #556b2f;
+    padding: 2px 8px;
+    border-radius: 3px;
+    margin-bottom: 6px;
+}
+
+.popup-fr24-detail { margin: 2px 0; }
+
+.popup-route {
+    color: var(--accent) !important;
+    font-weight: 600 !important;
+}
+
+.popup-loading {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    font-style: italic;
+    padding: 2px 0;
+}
+
+.popup-loading-hint {
+    color: var(--text-muted);
+    font-style: italic;
+    font-weight: 400;
+    font-size: 0.7rem;
+}
 
 /* News grid */
 .news-grid {
@@ -635,4 +645,78 @@
     .news-grid { grid-template-columns: repeat(auto-fill, minmax(640px, 1fr)); }
     .news-card-body { min-height: 420px; }
     .news-card-body iframe { min-height: 420px; }
+}
+
+/* Toast notifications */
+#toast-container {
+    position: fixed;
+    top: calc(var(--header-height) + 12px);
+    right: 16px;
+    z-index: 2000;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    pointer-events: none;
+    max-width: 380px;
+}
+
+.toast {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 14px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+    color: var(--text-primary);
+    font-size: 0.82rem;
+    pointer-events: auto;
+    opacity: 0;
+    transform: translateX(40px);
+    transition: opacity 200ms ease, transform 200ms ease;
+}
+
+.toast-visible {
+    opacity: 1;
+    transform: translateX(0);
+}
+
+.toast-error { border-color: var(--danger); }
+.toast-warn { border-color: var(--warning); }
+.toast-info { border-color: var(--accent); }
+
+.toast-icon {
+    flex-shrink: 0;
+    width: 18px;
+    height: 18px;
+    margin-top: 1px;
+}
+
+.toast-icon svg { width: 18px; height: 18px; }
+.toast-error .toast-icon { color: var(--danger); }
+.toast-warn .toast-icon { color: var(--warning); }
+.toast-info .toast-icon { color: var(--accent); }
+
+.toast-message { flex: 1; line-height: 1.4; }
+
+.toast-close {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 1.1rem;
+    cursor: pointer;
+    padding: 0 2px;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
+.toast-close:hover { color: var(--text-primary); }
+
+@media (max-width: 768px) {
+    #toast-container {
+        right: 8px;
+        left: 8px;
+        max-width: none;
+    }
 }

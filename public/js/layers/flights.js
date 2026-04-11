@@ -1,30 +1,90 @@
 // Flight tracking layer
-// Server fetches from 30+ global hotspots, deduplicates, and caches.
-// Frontend just fetches /api/flights/all - all aircraft in one response.
+// Bulk positions from adsb.lol (full global grid, free).
+// FR24 detail fetched on-demand when user clicks a specific aircraft.
+// Renders airplane silhouettes on a single <canvas> for smooth panning.
 
-const REFRESH_INTERVAL = 10000; // 10 seconds
+import { showToast } from '../toast.js';
+
+const REFRESH_INTERVAL = 15000;
 
 let layerGroup;
+let canvasRenderer;
 let refreshTimer;
 let map;
 let enabled = true;
 let aircraftCount = 0;
 let fetching = false;
+let lastAircraft = [];
+let hasFR24 = false;
 
-function createAircraftIcon(heading, onGround, emergency) {
+// ── Custom canvas airplane marker ──
+
+const AircraftMarker = L.CircleMarker.extend({
+    options: { heading: 0 },
+
+    _updatePath() {
+        this._renderer._drawAircraft(this);
+    },
+
+    _containsPoint(p) {
+        const s = this.options.radius || 7;
+        return p.distanceTo(this._point) <= s * 2;
+    }
+});
+
+L.Canvas.include({
+    _drawAircraft(layer) {
+        if (!this._drawing || layer._empty()) return;
+
+        const p = layer._point;
+        const ctx = this._ctx;
+        const heading = (layer.options.heading || 0) * Math.PI / 180;
+        const s = layer.options.radius || 7;
+
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate(heading);
+
+        ctx.beginPath();
+        ctx.moveTo(0, -s);
+        ctx.lineTo(-s * 0.3, -s * 0.1);
+        ctx.lineTo(-s * 1.1, s * 0.2);
+        ctx.lineTo(-s * 0.3, s * 0.15);
+        ctx.lineTo(-s * 0.3, s * 0.6);
+        ctx.lineTo(-s * 0.6, s * 0.9);
+        ctx.lineTo(0, s * 0.7);
+        ctx.lineTo(s * 0.6, s * 0.9);
+        ctx.lineTo(s * 0.3, s * 0.6);
+        ctx.lineTo(s * 0.3, s * 0.15);
+        ctx.lineTo(s * 1.1, s * 0.2);
+        ctx.lineTo(s * 0.3, -s * 0.1);
+        ctx.closePath();
+
+        ctx.fillStyle = layer.options.fillColor || '#00d4ff';
+        ctx.globalAlpha = layer.options.fillOpacity || 0.9;
+        ctx.fill();
+
+        ctx.restore();
+    }
+});
+
+function getMarkerOpts(ac) {
     let color = '#00d4ff';
+    const onGround = ac.alt_baro === 'ground' || ac.alt_baro === 0;
     if (onGround) color = '#555';
-    if (emergency) color = '#ff4444';
-    const rotation = heading || 0;
-
-    return L.divIcon({
-        className: 'aircraft-icon',
-        html: `<svg width="14" height="14" viewBox="0 0 24 24" style="transform:rotate(${rotation}deg);color:${color}" fill="currentColor">
-            <path d="M12 2L8 10H3l2 4-3 6h5l5 2 5-2h5l-3-6 2-4h-5L12 2z"/>
-        </svg>`,
-        iconSize: [14, 14],
-        iconAnchor: [7, 7],
-    });
+    if (ac.military) color = '#88aa00';
+    if (ac.emergency && ac.emergency !== 'none') color = '#ff4444';
+    return {
+        renderer: canvasRenderer,
+        radius: 7,
+        heading: ac.track || 0,
+        fillColor: color,
+        fillOpacity: 0.9,
+        weight: 0,
+        stroke: false,
+        interactive: true,
+        bubblingMouseEvents: false,
+    };
 }
 
 function formatAlt(feet) {
@@ -37,10 +97,11 @@ function formatSpeed(knots) {
     return `${Math.round(knots)} kts`;
 }
 
+// Initial popup (adsb.lol data only — fast)
 function buildPopup(ac) {
     const callsign = ac.flight?.trim() || ac.r || ac.hex || 'Unknown';
-    const reg = ac.r || 'N/A';
-    const type = ac.t || 'N/A';
+    const reg = ac.r || '';
+    const type = ac.t || '';
     const desc = ac.desc || '';
     const operator = ac.ownOp || '';
     const alt = formatAlt(ac.alt_baro);
@@ -50,16 +111,31 @@ function buildPopup(ac) {
     const squawk = ac.squawk || 'N/A';
     const emergency = ac.emergency && ac.emergency !== 'none' ? ac.emergency : null;
 
-    let html = `<div class="popup-title">${callsign}</div>`;
+    let html = '';
+
+    // Photo placeholder (loads lazily via img src)
+    if (ac.hex) {
+        html += `<img src="/api/flights/photo/${ac.hex}" class="popup-aircraft-photo" loading="lazy" onerror="this.style.display='none'" alt="">`;
+    }
+
+    html += `<div class="popup-title">${callsign}</div>`;
+
+    if (ac.military) {
+        html += `<div class="popup-military-badge">MILITARY</div>`;
+    }
     if (emergency) {
         html += `<div class="popup-row"><span class="popup-label">EMERGENCY</span><span class="popup-value" style="color:#ff4444;font-weight:700">${emergency.toUpperCase()}</span></div>`;
     }
+
+    // FR24 enrichment placeholder — filled on open
+    html += `<div id="fr24-detail-${ac.hex}" class="popup-fr24-detail"></div>`;
+
     if (operator) {
         html += `<div class="popup-row"><span class="popup-label">Operator</span><span class="popup-value">${operator}</span></div>`;
     }
     html += `
-        <div class="popup-row"><span class="popup-label">Registration</span><span class="popup-value">${reg}</span></div>
-        <div class="popup-row"><span class="popup-label">Type</span><span class="popup-value">${type}${desc ? ' - ' + desc : ''}</span></div>
+        <div class="popup-row"><span class="popup-label">Registration</span><span class="popup-value">${reg || '<span class="popup-loading-hint">click to load</span>'}</span></div>
+        <div class="popup-row"><span class="popup-label">Type</span><span class="popup-value">${type ? type + (desc ? ' - ' + desc : '') : '<span class="popup-loading-hint">click to load</span>'}</span></div>
         <div class="popup-row"><span class="popup-label">Altitude</span><span class="popup-value">${alt}</span></div>
         <div class="popup-row"><span class="popup-label">Speed</span><span class="popup-value">${speed}</span></div>
         <div class="popup-row"><span class="popup-label">Heading</span><span class="popup-value">${heading}</span></div>
@@ -70,6 +146,81 @@ function buildPopup(ac) {
     return html;
 }
 
+// Fetch FR24 detail when popup opens
+async function loadFR24Detail(hex) {
+    if (!hasFR24 || !hex) return;
+
+    const el = document.getElementById(`fr24-detail-${hex}`);
+    if (!el) return;
+
+    el.innerHTML = '<div class="popup-loading">Loading FR24 detail...</div>';
+
+    try {
+        // Get the aircraft's position to build bounds
+        const ac = lastAircraft.find(a => a.hex === hex);
+        if (!ac?.lat || !ac?.lon) return;
+
+        const pad = 2; // small bounding box around this aircraft
+        const bounds = `${ac.lat + pad},${ac.lat - pad},${ac.lon - pad},${ac.lon + pad}`;
+
+        const res = await fetch(`/api/flights/enrich?bounds=${bounds}`);
+        if (!res.ok) throw new Error('');
+
+        // Now refetch the enriched flight list to get this aircraft's FR24 data
+        const allRes = await fetch('/api/flights/all');
+        if (!allRes.ok) throw new Error('');
+        const allData = await allRes.json();
+        const enriched = allData.ac?.find(a => a.hex === hex);
+
+        if (!enriched) { el.innerHTML = ''; return; }
+
+        let html = '';
+        const route = (enriched.orig && enriched.dest) ? `${enriched.orig} → ${enriched.dest}` : '';
+
+        if (route) {
+            html += `<div class="popup-row"><span class="popup-label">Route</span><span class="popup-value popup-route">${route}</span></div>`;
+        }
+        if (enriched.airline && enriched.airline !== enriched.ownOp) {
+            html += `<div class="popup-row"><span class="popup-label">Airline</span><span class="popup-value">${enriched.airline}</span></div>`;
+        }
+        if (enriched.flightNum) {
+            html += `<div class="popup-row"><span class="popup-label">Flight #</span><span class="popup-value">${enriched.flightNum}</span></div>`;
+        }
+
+        el.innerHTML = html;
+    } catch {
+        el.innerHTML = '';
+    }
+}
+
+function renderViewport() {
+    const bounds = map.getBounds().pad(0.1);
+
+    layerGroup.clearLayers();
+    let count = 0;
+
+    for (const ac of lastAircraft) {
+        if (ac.lat == null || ac.lon == null) continue;
+        if (!bounds.contains([ac.lat, ac.lon])) continue;
+
+        const opts = getMarkerOpts(ac);
+        const marker = new AircraftMarker([ac.lat, ac.lon], opts)
+            .bindPopup(buildPopup(ac), { maxWidth: 320 });
+
+        // Load FR24 detail when this popup opens
+        marker.on('popupopen', () => loadFR24Detail(ac.hex));
+
+        layerGroup.addLayer(marker);
+        count++;
+    }
+
+    aircraftCount = count;
+    const el = document.getElementById('flight-count');
+    if (el) el.textContent = aircraftCount.toLocaleString();
+    const refreshEl = document.getElementById('refresh-flights');
+    if (refreshEl) refreshEl.textContent = new Date().toLocaleTimeString('en-US', { hour12: false });
+}
+
 async function fetchFlights() {
     if (!enabled || fetching) return;
     fetching = true;
@@ -78,35 +229,13 @@ async function fetchFlights() {
         const res = await fetch('/api/flights/all');
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
-        const aircraft = data.ac || [];
 
-        layerGroup.clearLayers();
-        let count = 0;
-
-        for (const ac of aircraft) {
-            const lat = ac.lat;
-            const lon = ac.lon;
-            if (lat == null || lon == null) continue;
-
-            const heading = ac.track;
-            const onGround = ac.alt_baro === 'ground';
-            const emergency = ac.emergency && ac.emergency !== 'none';
-            const icon = createAircraftIcon(heading, onGround, emergency);
-
-            const marker = L.marker([lat, lon], { icon })
-                .bindPopup(buildPopup(ac), { maxWidth: 300 });
-
-            layerGroup.addLayer(marker);
-            count++;
-        }
-
-        aircraftCount = count;
-        const el = document.getElementById('flight-count');
-        if (el) el.textContent = aircraftCount.toLocaleString();
-        const refreshEl = document.getElementById('refresh-flights');
-        if (refreshEl) refreshEl.textContent = new Date().toLocaleTimeString('en-US', { hour12: false });
+        lastAircraft = data.ac || [];
+        hasFR24 = !!data.fr24;
+        renderViewport();
     } catch (err) {
         console.warn('Flight data fetch failed:', err.message);
+        showToast('Flight data unavailable', 'warn');
     } finally {
         fetching = false;
     }
@@ -114,9 +243,15 @@ async function fetchFlights() {
 
 export function initFlightLayer(leafletMap) {
     map = leafletMap;
+    canvasRenderer = L.canvas({ padding: 0.5 });
     layerGroup = L.layerGroup().addTo(map);
     fetchFlights();
     refreshTimer = setInterval(fetchFlights, REFRESH_INTERVAL);
+
+    map.on('moveend', () => {
+        if (!enabled) return;
+        renderViewport();
+    });
 }
 
 export function setEnabled(on) {

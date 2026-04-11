@@ -2,6 +2,8 @@
 // Uses NASA EONET API (free, no key) for wildfire events
 // Plus FIRMS open CSV data for active fire hotspots
 
+import { showToast } from '../toast.js';
+
 const EONET_URL = '/api/fires';
 const FIRMS_CSV_URL = 'https://firms.modaps.eosdis.nasa.gov/data/active_fire/modis-c6.1/csv/MODIS_C6_1_Global_24h.csv';
 const REFRESH_INTERVAL = 300000; // 5 minutes
@@ -71,6 +73,7 @@ async function fetchFires() {
         if (refreshEl) refreshEl.textContent = new Date().toLocaleTimeString('en-US', { hour12: false });
     } catch (err) {
         console.warn('Fire data fetch failed:', err.message);
+        showToast('Fire data unavailable', 'warn');
     }
 }
 
