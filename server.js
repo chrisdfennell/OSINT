@@ -15,7 +15,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 const FR24_TOKEN = process.env.FR24_API_TOKEN || '';
 const FR24_BASE = 'https://fr24api.flightradar24.com/api';
 const OPENSKY_URL = 'https://opensky-network.org/api/states/all';
-const OPENSKY_REFRESH = 15000; // 15s (anonymous: 10s resolution, ~100 calls/day budget)
+const OPENSKY_REFRESH = 60000; // 60s — anonymous budget is ~100 calls/day, registered is ~1000/day
 
 let flightCache = { ac: [], ts: 0 };
 
@@ -93,11 +93,14 @@ function parseOpenSkyStates(states) {
     return aircraft;
 }
 
+let openskyBackoff = OPENSKY_REFRESH;
+
 async function refreshFlightCache() {
     try {
         const res = await fetch(OPENSKY_URL);
         if (res.status === 429) {
-            console.warn('OpenSky rate limited, will retry next cycle');
+            openskyBackoff = Math.min(openskyBackoff * 2, 600000); // back off up to 10 min
+            console.warn(`OpenSky rate limited, backing off to ${openskyBackoff / 1000}s`);
             return;
         }
         if (!res.ok) throw new Error(`OpenSky ${res.status}`);
@@ -107,14 +110,20 @@ async function refreshFlightCache() {
         const aircraft = parseOpenSkyStates(states);
 
         flightCache = { ac: aircraft, ts: Date.now() };
+        openskyBackoff = OPENSKY_REFRESH; // reset on success
         console.log(`Flights: ${aircraft.length} aircraft via OpenSky`);
     } catch (err) {
         console.error('Flight cache error:', err.message);
     }
 }
 
-refreshFlightCache();
-setInterval(refreshFlightCache, OPENSKY_REFRESH);
+// Use dynamic interval with backoff
+function scheduleFlightRefresh() {
+    refreshFlightCache().then(() => {
+        setTimeout(scheduleFlightRefresh, openskyBackoff);
+    });
+}
+scheduleFlightRefresh();
 
 // ── FR24 enrichment (on-demand per click) ──
 
@@ -178,6 +187,8 @@ function connectAISStream() {
     if (!AISSTREAM_KEY) { console.log('No AISSTREAM_API_KEY — vessel tracking disabled.'); return; }
 
     let ws, reconnectDelay = 5000;
+    let lastMessage = Date.now();
+    let heartbeatTimer;
 
     function open() {
         ws = new WebSocket('wss://stream.aisstream.io/v0/stream');
@@ -185,14 +196,26 @@ function connectAISStream() {
         ws.on('open', () => {
             console.log('AISStream connected');
             reconnectDelay = 5000;
+            lastMessage = Date.now();
             ws.send(JSON.stringify({
                 APIkey: AISSTREAM_KEY,
                 BoundingBoxes: [[[-90, -180], [90, 180]]],
                 FilterMessageTypes: ['PositionReport', 'ShipStaticData', 'StandardClassBPositionReport'],
             }));
+
+            // Heartbeat: if no messages for 30s, connection is stale — reconnect
+            clearInterval(heartbeatTimer);
+            heartbeatTimer = setInterval(() => {
+                if (Date.now() - lastMessage > 30000) {
+                    console.warn('AISStream stale (no data 30s), reconnecting...');
+                    clearInterval(heartbeatTimer);
+                    try { ws.close(); } catch {}
+                }
+            }, 10000);
         });
 
         ws.on('message', (raw) => {
+            lastMessage = Date.now();
             try {
                 const msg = JSON.parse(raw);
                 const meta = msg.MetaData || {};
@@ -227,7 +250,7 @@ function connectAISStream() {
             } catch { /* skip */ }
         });
 
-        ws.on('close', () => { setTimeout(open, reconnectDelay); reconnectDelay = Math.min(reconnectDelay * 2, 60000); });
+        ws.on('close', () => { clearInterval(heartbeatTimer); setTimeout(open, reconnectDelay); reconnectDelay = Math.min(reconnectDelay * 2, 60000); });
         ws.on('error', (err) => { console.error('AISStream error:', err.message); ws.close(); });
     }
     open();

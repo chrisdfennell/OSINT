@@ -40,6 +40,7 @@ async function loadRainViewerData() {
                 {
                     opacity: 0.65,
                     maxZoom: 18,
+                    maxNativeZoom: 12,
                     zIndex: 100,
                     attribution: '<a href="https://www.rainviewer.com/">RainViewer</a>',
                 }
@@ -53,6 +54,7 @@ async function loadRainViewerData() {
                 {
                     opacity: 0.5,
                     maxZoom: 18,
+                    maxNativeZoom: 12,
                     zIndex: 99,
                     attribution: '<a href="https://www.rainviewer.com/">RainViewer</a>',
                 }

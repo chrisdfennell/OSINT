@@ -69,7 +69,7 @@ const VesselMarker = L.CircleMarker.extend({
 
     _containsPoint(p) {
         const s = this.options.radius || 7;
-        return p.distanceTo(this._point) <= s * 2;
+        return p.distanceTo(this._point) <= s * 3;
     }
 });
 
@@ -192,7 +192,7 @@ async function fetchVessels() {
 
 export function initVesselLayer(leafletMap) {
     map = leafletMap;
-    canvasRenderer = L.canvas({ padding: 0.5 });
+    canvasRenderer = L.canvas({ padding: 0.5, tolerance: 15 });
     layerGroup = L.layerGroup();
 
     map.on('moveend', () => {

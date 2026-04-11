@@ -28,7 +28,7 @@ const AircraftMarker = L.CircleMarker.extend({
 
     _containsPoint(p) {
         const s = this.options.radius || 7;
-        return p.distanceTo(this._point) <= s * 2;
+        return p.distanceTo(this._point) <= s * 3;
     }
 });
 
@@ -243,7 +243,7 @@ async function fetchFlights() {
 
 export function initFlightLayer(leafletMap) {
     map = leafletMap;
-    canvasRenderer = L.canvas({ padding: 0.5 });
+    canvasRenderer = L.canvas({ padding: 0.5, tolerance: 15 });
     layerGroup = L.layerGroup().addTo(map);
     fetchFlights();
     refreshTimer = setInterval(fetchFlights, REFRESH_INTERVAL);
