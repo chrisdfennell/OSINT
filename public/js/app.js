@@ -1,23 +1,40 @@
 import { initMap, setBaseMap } from './map.js';
 import { initFlightLayer, setEnabled as setFlightsEnabled } from './layers/flights.js';
 import { initEarthquakeLayer, setEnabled as setQuakesEnabled } from './layers/earthquakes.js';
-import { initWeatherLayers, setRadarEnabled, setCloudsEnabled, setWindEnabled, setTempEnabled, setOWMKey } from './layers/weather.js';
+import { initWeatherLayers, setRadarEnabled, setRainViewerEnabled, setNexradEnabled, setCloudsEnabled, setWindEnabled, setTempEnabled, setOWMKey } from './layers/weather.js';
 import { initFireLayer, setEnabled as setFiresEnabled } from './layers/fires.js';
 import { initVesselLayer, setEnabled as setVesselsEnabled } from './layers/vessels.js';
+import { initGdeltLayer, setEnabled as setGdeltEnabled } from './layers/gdelt.js';
+import { initLightningLayer, setEnabled as setLightningEnabled } from './layers/lightning.js';
+import { initVolcanoLayer, setEnabled as setVolcanoesEnabled } from './layers/volcanoes.js';
+import { initCycloneLayer, setEnabled as setCyclonesEnabled } from './layers/cyclones.js';
+import { initISSLayer, setEnabled as setISSEnabled } from './layers/iss.js';
+import { initCablesLayer, setEnabled as setCablesEnabled } from './layers/cables.js';
+import { initAirQualityLayer, setEnabled as setAirQualityEnabled } from './layers/airquality.js';
+import { initSearch } from './search.js';
+import { initStateSync } from './state.js';
 import { showToast } from './toast.js';
+import { initTicker } from './ticker.js';
 import { tools } from './data/tools.js';
 import { categories } from './data/categories.js';
 
 // ── News channels (YouTube live embeds) ──
+// Uses youtube.com/embed/live_stream?channel=<id> — only works while the
+// channel has a single active livestream. If an embed shows "unavailable",
+// the channel likely paused its 24/7 stream; swap the entry out.
 const newsChannels = [
-    { id: 'sky-news', name: 'Sky News', channel: 'UCoMdktPbSTixAyNGwb-UYkQ', url: 'https://www.youtube.com/@SkyNews/live' },
-    { id: 'al-jazeera', name: 'Al Jazeera English', channel: 'UCNye-wNBqNL5ZzHSJj3l8Bg', url: 'https://www.youtube.com/@AlJazeeraEnglish/live' },
-    { id: 'france24', name: 'France 24', channel: 'UCQfwfsi5VrQ8yKZ-UWmAEFg', url: 'https://www.youtube.com/@FRANCE24English/live' },
-    { id: 'dw-news', name: 'DW News', channel: 'UCknLrEdhRCp1aegoMqRaCZg', url: 'https://www.youtube.com/@DWNews/live' },
-    { id: 'abc-news', name: 'ABC News', channel: 'UCBi2mrWuNuyYy4gbM6fU18Q', url: 'https://www.youtube.com/@ABCNews/live' },
-    { id: 'nbc-news', name: 'NBC News', channel: 'UCeY0bbntWzzVIaj2z3QigXg', url: 'https://www.youtube.com/@NBCNews/live' },
-    { id: 'euronews', name: 'Euronews', channel: 'UCW2QcKZiU8aUGg4yxCIditg', url: 'https://www.youtube.com/@euronews/live' },
-    { id: 'nhk-world', name: 'NHK World', channel: 'UCi2KNss4Yx73V0JVoaBNDOA', url: 'https://www.youtube.com/@NHKWORLDJAPAN/live' },
+    { id: 'al-jazeera',  name: 'Al Jazeera English', channel: 'UCNye-wNBqNL5ZzHSJj3l8Bg', url: 'https://www.youtube.com/@AlJazeeraEnglish/live' },
+    { id: 'france24',    name: 'France 24',          channel: 'UCQfwfsi5VrQ8yKZ-UWmAEFg', url: 'https://www.youtube.com/@FRANCE24English/live' },
+    { id: 'dw-news',     name: 'DW News',            channel: 'UCknLrEdhRCp1aegoMqRaCZg', url: 'https://www.youtube.com/@DWNews/live' },
+    { id: 'abc-news',    name: 'ABC News',           channel: 'UCBi2mrWuNuyYy4gbM6fU18Q', url: 'https://www.youtube.com/@ABCNews/live' },
+    { id: 'nbc-news',    name: 'NBC News',           channel: 'UCeY0bbntWzzVIaj2z3QigXg', url: 'https://www.youtube.com/@NBCNews/live' },
+    { id: 'cbs-news',    name: 'CBS News',           channel: 'UC8p1vwvWtl6T73JiExfWs1g', url: 'https://www.youtube.com/@CBSNews/live' },
+    { id: 'livenow-fox', name: 'LiveNOW from FOX',   channel: 'UCWQO6RCa6qJi8-rJZ9wJhcg', url: 'https://www.youtube.com/@LiveNOWFOX/live' },
+    { id: 'bloomberg',   name: 'Bloomberg TV',       channel: 'UCIALMKvObZNtJ6AmdCLP7Lg', url: 'https://www.youtube.com/@markets/live' },
+    { id: 'wion',        name: 'WION',               channel: 'UC_gUM8rL-Lrg6O3adPW9K1g', url: 'https://www.youtube.com/@WION/live' },
+    { id: 'euronews-en', name: 'Euronews English',   channel: 'UCSrZ3UV4jOidv8ppoVuvW9Q', url: 'https://www.youtube.com/@euronewsen/live' },
+    { id: 'africanews',  name: 'Africanews',         channel: 'UCz40b_PNY9NXU_sTHD5dQTA', url: 'https://www.youtube.com/@africanews/live' },
+    { id: 'trt-world',   name: 'TRT World',          channel: 'UC7fWeaHhqgM4Ry-RMpM2YYw', url: 'https://www.youtube.com/@trtworld/live' },
 ];
 
 let currentTab = 'map';
@@ -36,6 +53,14 @@ function init() {
     initWeatherLayers(map);
     initFireLayer(map);
     initVesselLayer(map);
+    initGdeltLayer(map);
+    initLightningLayer(map);
+    initVolcanoLayer(map);
+    initCycloneLayer(map);
+    initISSLayer(map);
+    initCablesLayer(map);
+    initAirQualityLayer(map);
+    initSearch(map);
 
     // Wire up layer toggles
     setupLayerToggles();
@@ -51,6 +76,12 @@ function init() {
 
     // Wire up OWM API key
     setupOWMKey();
+
+    // Start news ticker
+    initTicker();
+
+    // URL hash state sync (must run after toggles and basemap switcher are wired).
+    initStateSync(map);
 
     // Render news & tools panels
     renderNewsSidebar();
@@ -135,16 +166,54 @@ function setupLayerToggles() {
         setRadarEnabled(e.target.checked);
     });
 
+    document.getElementById('layer-nexrad').addEventListener('change', (e) => {
+        setNexradEnabled(e.target.checked);
+    });
+
+    document.getElementById('layer-rainviewer').addEventListener('change', (e) => {
+        setRainViewerEnabled(e.target.checked);
+    });
+
+    document.getElementById('layer-gdelt').addEventListener('change', (e) => {
+        setGdeltEnabled(e.target.checked);
+    });
+
+    document.getElementById('layer-lightning').addEventListener('change', (e) => {
+        setLightningEnabled(e.target.checked);
+    });
+
+    document.getElementById('layer-volcanoes').addEventListener('change', (e) => {
+        setVolcanoesEnabled(e.target.checked);
+    });
+
+    document.getElementById('layer-cyclones').addEventListener('change', (e) => {
+        setCyclonesEnabled(e.target.checked);
+    });
+
+    document.getElementById('layer-iss').addEventListener('change', (e) => {
+        setISSEnabled(e.target.checked);
+    });
+
+    document.getElementById('layer-cables').addEventListener('change', (e) => {
+        setCablesEnabled(e.target.checked);
+    });
+
+    document.getElementById('layer-airquality').addEventListener('change', (e) => {
+        setAirQualityEnabled(e.target.checked);
+    });
+
     document.getElementById('layer-clouds').addEventListener('change', (e) => {
         setCloudsEnabled(e.target.checked);
     });
 
     document.getElementById('layer-wind').addEventListener('change', (e) => {
         setWindEnabled(e.target.checked);
+        document.getElementById('legend-wind').classList.toggle('visible', e.target.checked);
     });
 
     document.getElementById('layer-temp').addEventListener('change', (e) => {
         setTempEnabled(e.target.checked);
+        document.getElementById('legend-temp').classList.toggle('visible', e.target.checked);
     });
 }
 

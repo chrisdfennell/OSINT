@@ -35,6 +35,13 @@
                 <button class="tab" data-tab="news">Live News</button>
                 <button class="tab" data-tab="tools">Tools</button>
             </div>
+            <div class="search-box">
+                <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                </svg>
+                <input type="text" id="search-input" placeholder="Search places…" autocomplete="off">
+                <div class="search-results" id="search-results"></div>
+            </div>
         </div>
         <div class="header-right">
             <div class="clock">
@@ -87,6 +94,49 @@
                     </label>
 
                     <label class="layer-toggle">
+                        <input type="checkbox" id="layer-volcanoes">
+                        <span class="layer-icon" style="color: #ff6622">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 20l6-12 3 6 2-4 5 10z"/></svg>
+                        </span>
+                        <span class="layer-name">Volcanoes</span>
+                        <span class="layer-count" id="volcano-count">0</span>
+                    </label>
+
+                    <label class="layer-toggle">
+                        <input type="checkbox" id="layer-cyclones">
+                        <span class="layer-icon" style="color: #ff44aa">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 3c5 0 8 3 8 7 0 3-2 5-4 5-1 0-2-.5-2-2 0 2-1 3-3 3-3 0-6-2-6-6 0-4 3-7 7-7z"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/></svg>
+                        </span>
+                        <span class="layer-name">Cyclones</span>
+                        <span class="layer-count" id="cyclone-count">0</span>
+                    </label>
+
+                    <label class="layer-toggle">
+                        <input type="checkbox" id="layer-iss">
+                        <span class="layer-icon" style="color: #ff44cc">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="10" y="10" width="4" height="4"/><rect x="2" y="11" width="6" height="2"/><rect x="16" y="11" width="6" height="2"/><path d="M12 2v8M12 14v8"/></svg>
+                        </span>
+                        <span class="layer-name">ISS</span>
+                    </label>
+
+                    <label class="layer-toggle">
+                        <input type="checkbox" id="layer-airquality">
+                        <span class="layer-icon" style="color: #88cc00">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17.5 19a4.5 4.5 0 1 0-9 0"/><path d="M6 13a5 5 0 1 1 10 0"/><circle cx="12" cy="7" r="3"/></svg>
+                        </span>
+                        <span class="layer-name">Air Quality</span>
+                        <span class="layer-count" id="airquality-count">0</span>
+                    </label>
+
+                    <label class="layer-toggle">
+                        <input type="checkbox" id="layer-cables">
+                        <span class="layer-icon" style="color: #88ccff">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 12c3-6 7-6 10 0s7 6 10 0"/></svg>
+                        </span>
+                        <span class="layer-name">Submarine Cables</span>
+                    </label>
+
+                    <label class="layer-toggle">
                         <input type="checkbox" id="layer-vessels">
                         <span class="layer-icon" style="color: #44cc88">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 20l.8-2.8A2 2 0 0 1 4.7 16h14.6a2 2 0 0 1 1.9 1.2L22 20"/><path d="M4 16l-1.4-5.2A1 1 0 0 1 3.6 9.6L12 6l8.4 3.6a1 1 0 0 1 1 1.2L20 16"/><path d="M12 6V2"/></svg>
@@ -104,15 +154,46 @@
                     </label>
 
                     <label class="layer-toggle">
+                        <input type="checkbox" id="layer-nexrad">
+                        <span class="layer-icon" style="color: #00ff88">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+                        </span>
+                        <span class="layer-name">NEXRAD (US)</span>
+                    </label>
+
+                    <label class="layer-toggle">
+                        <input type="checkbox" id="layer-rainviewer">
+                        <span class="layer-icon" style="color: #44aaff">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 19v2M12 17v4M16 19v2M20 16.58A5 5 0 0 0 18 7h-1.26a8 8 0 1 0-11.62 9"/></svg>
+                        </span>
+                        <span class="layer-name">Rain Radar</span>
+                    </label>
+
+                    <label class="layer-toggle">
+                        <input type="checkbox" id="layer-gdelt">
+                        <span class="layer-icon" style="color: #cc88ff">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4h16v16H4z"/><path d="M4 12h16M12 4v16"/></svg>
+                        </span>
+                        <span class="layer-name">GDELT Events</span>
+                        <span class="layer-count" id="gdelt-count">0</span>
+                    </label>
+
+                    <label class="layer-toggle">
+                        <input type="checkbox" id="layer-lightning">
+                        <span class="layer-icon" style="color: #ffe066">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="13 2 4 14 11 14 9 22 20 10 13 10 13 2"/></svg>
+                        </span>
+                        <span class="layer-name">Lightning</span>
+                        <span class="layer-count" id="lightning-count">0</span>
+                    </label>
+
+                    <label class="layer-toggle">
                         <input type="checkbox" id="layer-clouds">
                         <span class="layer-icon" style="color: #aaaacc">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg>
                         </span>
                         <span class="layer-name">Satellite IR</span>
                     </label>
-
-                    <div class="sidebar-divider"></div>
-                    <div class="sidebar-section-label">OWM LAYERS</div>
 
                     <label class="layer-toggle">
                         <input type="checkbox" id="layer-wind">
@@ -165,6 +246,10 @@
                             <span>Ships</span>
                             <span id="refresh-vessels">--</span>
                         </div>
+                        <div class="refresh-row">
+                            <span>GDELT</span>
+                            <span id="refresh-gdelt">--</span>
+                        </div>
                     </div>
                 </div>
 
@@ -195,6 +280,18 @@
             <!-- Map view -->
             <div class="view active" id="view-map">
                 <div id="map"></div>
+                <div class="map-legends" id="map-legends">
+                    <div class="map-legend" id="legend-wind">
+                        <div class="map-legend-title">Wind Speed (m/s)</div>
+                        <div class="map-legend-gradient" style="background: linear-gradient(to right, #ffffff, #bbeeff, #44bbff, #2266dd, #8844cc, #ff44aa);"></div>
+                        <div class="map-legend-scale"><span>0</span><span>5</span><span>15</span><span>30</span><span>60</span><span>100+</span></div>
+                    </div>
+                    <div class="map-legend" id="legend-temp">
+                        <div class="map-legend-title">Temperature (°C)</div>
+                        <div class="map-legend-gradient" style="background: linear-gradient(to right, #9a00ff, #0066ff, #00ccff, #88ff88, #ffee44, #ff8800, #ff0000);"></div>
+                        <div class="map-legend-scale"><span>-40</span><span>-20</span><span>0</span><span>10</span><span>20</span><span>30</span><span>40</span></div>
+                    </div>
+                </div>
             </div>
 
             <!-- News view -->
@@ -211,6 +308,14 @@
                 </div>
             </div>
         </main>
+    </div>
+
+    <!-- News ticker -->
+    <div class="ticker-bar">
+        <div class="ticker-label">NEWS</div>
+        <div class="ticker-viewport">
+            <div class="ticker-track" id="ticker-track"></div>
+        </div>
     </div>
 
     <!-- Status Bar -->
