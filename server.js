@@ -846,7 +846,7 @@ app.get('/api/airquality', (req, res) => {
 // Without a key, everything still works — the list just isn't sorted by
 // viewer count and the `featured` flag drives ordering instead.
 
-const YT_API_KEY = process.env.YT_API_KEY || '';
+const YT_API_KEY = process.env.YOUTUBE_API_KEY || process.env.YT_API_KEY || '';
 const WEBCAM_REFRESH = 30 * 60 * 1000;
 
 // Mirrors the curated client-side list. Duplicated so the server knows
