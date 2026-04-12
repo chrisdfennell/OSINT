@@ -6,7 +6,7 @@
 const LAYER_IDS = [
     'flights', 'earthquakes', 'fires', 'volcanoes', 'cyclones', 'vessels',
     'weather', 'nexrad', 'rainviewer', 'clouds', 'wind', 'temp',
-    'gdelt', 'lightning', 'iss', 'airquality', 'cables',
+    'gdelt', 'lightning', 'iss', 'satellites', 'aurora', 'airquality', 'cables', 'powerplants', 'webcams',
 ];
 
 const HASH_DEBOUNCE_MS = 250;

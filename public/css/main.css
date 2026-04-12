@@ -213,6 +213,44 @@
 
 .sidebar-content { padding: 8px 0; }
 
+/* Collapsible layer groups */
+.sidebar-group {
+    border-bottom: 1px solid var(--border);
+}
+.sidebar-group:last-of-type { border-bottom: none; }
+
+.sidebar-group-header {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    cursor: pointer;
+    text-align: left;
+}
+.sidebar-group-header:hover { color: var(--text-primary); }
+.sidebar-group-header .chevron {
+    transition: transform var(--transition-fast);
+    color: var(--text-muted);
+    flex-shrink: 0;
+}
+.sidebar-group.collapsed .chevron { transform: rotate(-90deg); }
+
+.sidebar-group-body {
+    padding-bottom: 4px;
+    overflow: hidden;
+}
+.sidebar-group.collapsed .sidebar-group-body {
+    display: none;
+}
+
 .sidebar-section-label {
     padding: 10px 14px 6px;
     font-size: 0.65rem;
@@ -474,6 +512,148 @@
 @keyframes cyclone-spin {
     from { transform: rotate(0); }
     to   { transform: rotate(360deg); }
+}
+
+/* Webcam markers */
+.webcam-icon {
+    background: transparent !important;
+    border: none !important;
+}
+.webcam-icon svg {
+    width: 100%;
+    height: 100%;
+    fill: #ff99dd;
+    filter: drop-shadow(0 0 4px rgba(255, 153, 221, 0.6));
+}
+.webcam-icon-hot svg {
+    fill: #ff44aa;
+    filter: drop-shadow(0 0 8px rgba(255, 68, 170, 0.9));
+    animation: webcam-pulse 2s ease-in-out infinite;
+}
+@keyframes webcam-pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.15); }
+}
+.webcam-embed {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 10;
+    margin: 4px 0 6px;
+    background: #000;
+    border-radius: 4px;
+    overflow: hidden;
+}
+.webcam-embed iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
+}
+.webcam-hot {
+    display: inline-block;
+    font-size: 0.55rem;
+    font-weight: 700;
+    color: #fff;
+    background: var(--danger);
+    padding: 1px 4px;
+    border-radius: 3px;
+    letter-spacing: 0.5px;
+    vertical-align: middle;
+}
+
+/* Hot Spots sidebar panel */
+.hotspots-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 0 6px 6px;
+}
+.hotspot-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    text-align: left;
+    padding: 6px 8px;
+    background: none;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    color: var(--text-primary);
+    cursor: pointer;
+    font-size: 0.78rem;
+}
+.hotspot-item:hover {
+    background: var(--bg-card-hover);
+    border-color: var(--border-hover);
+}
+.hotspot-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    flex-shrink: 0;
+}
+.hotspot-dot.hotspot-live {
+    background: var(--danger);
+    box-shadow: 0 0 6px var(--danger);
+    animation: hotspot-blink 2s ease-in-out infinite;
+}
+@keyframes hotspot-blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}
+.hotspot-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.hotspot-viewers {
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: var(--accent);
+    flex-shrink: 0;
+}
+.hotspot-hot {
+    font-size: 0.55rem;
+    font-weight: 700;
+    color: #fff;
+    background: var(--danger);
+    padding: 1px 4px;
+    border-radius: 3px;
+    letter-spacing: 0.5px;
+    flex-shrink: 0;
+}
+.hotspots-empty {
+    padding: 8px 10px;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+/* Leaflet-Geoman measure labels on dark theme. */
+.measure-label {
+    background: rgba(0, 0, 0, 0.75) !important;
+    color: var(--accent) !important;
+    border: 1px solid var(--accent-dim) !important;
+    font-size: 0.72rem !important;
+    font-weight: 600 !important;
+    padding: 3px 6px !important;
+    border-radius: 3px !important;
+    white-space: nowrap;
+    box-shadow: 0 0 6px rgba(0, 0, 0, 0.4);
+}
+.measure-label::before { display: none !important; }
+
+/* Geoman toolbar styling tweaks for dark theme. */
+.leaflet-pm-toolbar .leaflet-pm-icon-polyline,
+.leaflet-pm-toolbar .leaflet-pm-icon-polygon,
+.leaflet-pm-toolbar .leaflet-pm-icon-rectangle,
+.leaflet-pm-toolbar .leaflet-pm-icon-circle,
+.leaflet-pm-toolbar .leaflet-pm-icon-marker,
+.leaflet-pm-toolbar .leaflet-pm-icon-edit,
+.leaflet-pm-toolbar .leaflet-pm-icon-drag,
+.leaflet-pm-toolbar .leaflet-pm-icon-delete {
+    filter: brightness(0.92);
 }
 
 .iss-icon {
@@ -903,7 +1083,7 @@
 .sidebar-overlay.visible { display: block; }
 
 /* Responsive */
-@media (max-width: 768px) {
+@media (max-width: 900px) {
     .sidebar-toggle { display: block; }
     .main-content { margin-left: 0; }
     .sidebar { transform: translateX(-100%); }
@@ -911,6 +1091,52 @@
     .clock { display: none; }
     .news-grid { grid-template-columns: 1fr; }
     .tools-grid { grid-template-columns: 1fr; }
+    .search-box { width: 180px; }
+
+    /* Larger tap targets for checkboxes inside sidebar groups. */
+    .layer-toggle { padding: 10px 14px; }
+}
+
+@media (max-width: 600px) {
+    /* Header wraps: tabs on row 1, search on row 2. Grow header height var
+       so layout/sidebar offsets follow automatically. */
+    :root { --header-height: 96px; }
+
+    /* Ticker takes too much vertical space on phones — hide it. */
+    :root { --ticker-height: 0px; }
+    .ticker-bar { display: none; }
+
+    .header {
+        flex-wrap: wrap;
+        height: auto;
+        min-height: var(--header-height);
+        padding: 6px 10px;
+        gap: 8px;
+    }
+    .header-center {
+        order: 3;
+        flex-basis: 100%;
+        justify-content: flex-start;
+        gap: 6px;
+    }
+    .tab { padding: 5px 10px; font-size: 0.78rem; }
+    .search-box { width: 100%; min-width: 0; flex: 1; }
+
+    /* Shrink the map legends so they don't cover zoom controls. */
+    .map-legends {
+        bottom: 12px;
+        right: 8px;
+    }
+    .map-legend { min-width: 160px; padding: 6px 8px; }
+    .map-legend-title { font-size: 0.58rem; }
+    .map-legend-scale { font-size: 0.58rem; }
+
+    /* News cards get a slightly taller aspect for touch legibility. */
+    .news-card-body { aspect-ratio: 4 / 3; }
+
+    /* Status bar tightens up. */
+    .status-bar { font-size: 0.65rem; padding: 0 8px; }
+    #status-zoom { display: none; }
 }
 
 /* Ultrawide: wider minimum keeps rows from getting too column-dense. */

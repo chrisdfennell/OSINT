@@ -11,8 +11,15 @@ import { initCycloneLayer, setEnabled as setCyclonesEnabled } from './layers/cyc
 import { initISSLayer, setEnabled as setISSEnabled } from './layers/iss.js';
 import { initCablesLayer, setEnabled as setCablesEnabled } from './layers/cables.js';
 import { initAirQualityLayer, setEnabled as setAirQualityEnabled } from './layers/airquality.js';
+import { initAuroraLayer, setEnabled as setAuroraEnabled } from './layers/aurora.js';
+import { initSatellitesLayer, setEnabled as setSatellitesEnabled } from './layers/satellites.js';
+import { initPowerPlantsLayer, setEnabled as setPowerPlantsEnabled } from './layers/powerplants.js';
+import { initWebcamsLayer, setEnabled as setWebcamsEnabled } from './layers/webcams.js';
+import { initMeasureTool } from './measure.js';
+import { initHotSpots } from './hotspots.js';
 import { initSearch } from './search.js';
 import { initStateSync } from './state.js';
+import { initSidebarGroups } from './sidebar.js';
 import { showToast } from './toast.js';
 import { initTicker } from './ticker.js';
 import { tools } from './data/tools.js';
@@ -60,6 +67,11 @@ function init() {
     initISSLayer(map);
     initCablesLayer(map);
     initAirQualityLayer(map);
+    initAuroraLayer(map);
+    initSatellitesLayer(map);
+    initPowerPlantsLayer(map);
+    initWebcamsLayer(map);
+    initMeasureTool(map);
     initSearch(map);
 
     // Wire up layer toggles
@@ -76,6 +88,12 @@ function init() {
 
     // Wire up OWM API key
     setupOWMKey();
+
+    // Sidebar group collapse/expand
+    initSidebarGroups();
+
+    // Hot Spots panel (dynamic webcam ranking by YouTube viewers)
+    initHotSpots();
 
     // Start news ticker
     initTicker();
@@ -200,6 +218,22 @@ function setupLayerToggles() {
 
     document.getElementById('layer-airquality').addEventListener('change', (e) => {
         setAirQualityEnabled(e.target.checked);
+    });
+
+    document.getElementById('layer-aurora').addEventListener('change', (e) => {
+        setAuroraEnabled(e.target.checked);
+    });
+
+    document.getElementById('layer-satellites').addEventListener('change', (e) => {
+        setSatellitesEnabled(e.target.checked);
+    });
+
+    document.getElementById('layer-powerplants').addEventListener('change', (e) => {
+        setPowerPlantsEnabled(e.target.checked);
+    });
+
+    document.getElementById('layer-webcams').addEventListener('change', (e) => {
+        setWebcamsEnabled(e.target.checked);
     });
 
     document.getElementById('layer-clouds').addEventListener('change', (e) => {

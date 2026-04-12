@@ -28,7 +28,7 @@ const AircraftMarker = L.CircleMarker.extend({
 
     _containsPoint(p) {
         const s = this.options.radius || 7;
-        return p.distanceTo(this._point) <= s * 3;
+        return p.distanceTo(this._point) <= s * 4;
     }
 });
 
@@ -193,25 +193,53 @@ async function loadFR24Detail(hex) {
     }
 }
 
+// Stable marker registry keyed by hex — updates in place so a marker the user
+// is about to click doesn't get destroyed by a refresh or pan.
+const markersByHex = new Map();
+
 function renderViewport() {
     const bounds = map.getBounds().pad(0.1);
-
-    layerGroup.clearLayers();
+    const seen = new Set();
     let count = 0;
 
     for (const ac of lastAircraft) {
         if (ac.lat == null || ac.lon == null) continue;
+        if (!ac.hex) continue;
         if (!bounds.contains([ac.lat, ac.lon])) continue;
 
+        seen.add(ac.hex);
         const opts = getMarkerOpts(ac);
-        const marker = new AircraftMarker([ac.lat, ac.lon], opts)
-            .bindPopup(buildPopup(ac), { maxWidth: 320 });
+        let marker = markersByHex.get(ac.hex);
 
-        // Load FR24 detail when this popup opens
-        marker.on('popupopen', () => loadFR24Detail(ac.hex));
-
-        layerGroup.addLayer(marker);
+        if (!marker) {
+            marker = new AircraftMarker([ac.lat, ac.lon], opts)
+                .bindPopup(buildPopup(ac), { maxWidth: 320 });
+            marker.on('popupopen', () => loadFR24Detail(ac.hex));
+            marker._acHex = ac.hex;
+            markersByHex.set(ac.hex, marker);
+            layerGroup.addLayer(marker);
+        } else {
+            marker.setLatLng([ac.lat, ac.lon]);
+            marker.options.heading = opts.heading;
+            marker.options.fillColor = opts.fillColor;
+            if (marker.isPopupOpen?.()) {
+                // Don't swap popup contents while the user has it open.
+            } else {
+                marker.setPopupContent(buildPopup(ac));
+            }
+            marker.redraw?.();
+            if (!layerGroup.hasLayer(marker)) layerGroup.addLayer(marker);
+        }
         count++;
+    }
+
+    // Remove markers that moved out of viewport or dropped out of the feed.
+    for (const [hex, marker] of markersByHex) {
+        if (!seen.has(hex)) {
+            if (marker.isPopupOpen?.()) continue; // keep the marker alive while its popup is open
+            layerGroup.removeLayer(marker);
+            markersByHex.delete(hex);
+        }
     }
 
     aircraftCount = count;
@@ -243,7 +271,7 @@ async function fetchFlights() {
 
 export function initFlightLayer(leafletMap) {
     map = leafletMap;
-    canvasRenderer = L.canvas({ padding: 0.5, tolerance: 15 });
+    canvasRenderer = L.canvas({ padding: 0.5, tolerance: 20 });
     layerGroup = L.layerGroup().addTo(map);
     fetchFlights();
     refreshTimer = setInterval(fetchFlights, REFRESH_INTERVAL);
@@ -264,5 +292,7 @@ export function setEnabled(on) {
         clearInterval(refreshTimer);
         refreshTimer = null;
         if (map.hasLayer(layerGroup)) map.removeLayer(layerGroup);
+        markersByHex.clear();
+        layerGroup.clearLayers();
     }
 }

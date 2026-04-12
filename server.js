@@ -840,6 +840,251 @@ app.get('/api/airquality', (req, res) => {
     res.json({ stations: airQualityCache.stations, ts: airQualityCache.ts, total: airQualityCache.stations.length });
 });
 
+// Live webcams + dynamic "Hot Spots" ranking. If YT_API_KEY is set the
+// server resolves each channel's current live video and polls YouTube Data
+// API v3 for concurrent viewer counts (cached 30 min to stay under quota).
+// Without a key, everything still works — the list just isn't sorted by
+// viewer count and the `featured` flag drives ordering instead.
+
+const YT_API_KEY = process.env.YT_API_KEY || '';
+const WEBCAM_REFRESH = 30 * 60 * 1000;
+
+// Mirrors the curated client-side list. Duplicated so the server knows
+// which channels to poll; kept short on purpose (quota budget).
+const WEBCAM_CHANNELS = [
+    { id: 'times-square',    channel: 'UCGdqH-QKkSJIZVAsDE7cEMQ' },
+    { id: 'jackson-hole',    channel: 'UC0QQGFhD26j8e1UjoTVVGnA' },
+    { id: 'katmai-bears',    channel: 'UCAbN_QDyakL8iMsOyEvh2WA' },
+    { id: 'venice-beach',    channel: 'UCGdqH-QKkSJIZVAsDE7cEMQ' },
+    { id: 'niagara-falls',   channel: 'UCGdqH-QKkSJIZVAsDE7cEMQ' },
+    { id: 'vegas-strip',     channel: 'UCGdqH-QKkSJIZVAsDE7cEMQ' },
+    { id: 'abbey-road',      channel: 'UCL3sFV4Y-5wmwq7mc5Otjtg' },
+    { id: 'dublin-temple-bar', channel: 'UCWCmM4_5cAZ-aI-0nGF2yGQ' },
+    { id: 'venice-italy',    channel: 'UCGdqH-QKkSJIZVAsDE7cEMQ' },
+    { id: 'santorini',       channel: 'UCnj7qLNoFxBqrtM7ltwQSKA' },
+    { id: 'plaza-mayor',     channel: 'UCnj7qLNoFxBqrtM7ltwQSKA' },
+    { id: 'shibuya',         channel: 'UCUeUPuNJnL5zT3tqTZpFRfA' },
+    { id: 'bangkok-traffic', channel: 'UCGdqH-QKkSJIZVAsDE7cEMQ' },
+    { id: 'sydney-harbour',  channel: 'UCGdqH-QKkSJIZVAsDE7cEMQ' },
+    { id: 'african-watering-hole', channel: 'UCAbN_QDyakL8iMsOyEvh2WA' },
+    { id: 'old-faithful',    channel: 'UCAbN_QDyakL8iMsOyEvh2WA' },
+];
+
+let webcamStats = { entries: [], ts: 0, enabled: !!YT_API_KEY };
+
+async function ytFetchLiveVideo(channelId) {
+    const url = `https://www.googleapis.com/youtube/v3/search?part=id&channelId=${channelId}&eventType=live&type=video&maxResults=1&key=${YT_API_KEY}`;
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(`search ${r.status}`);
+    const data = await r.json();
+    return data.items?.[0]?.id?.videoId || null;
+}
+
+async function ytFetchViewers(videoIds) {
+    if (!videoIds.length) return {};
+    const url = `https://www.googleapis.com/youtube/v3/videos?part=liveStreamingDetails,snippet&id=${videoIds.join(',')}&key=${YT_API_KEY}`;
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(`videos ${r.status}`);
+    const data = await r.json();
+    const out = {};
+    for (const item of data.items || []) {
+        out[item.id] = {
+            viewers: parseInt(item.liveStreamingDetails?.concurrentViewers || '0', 10),
+            title: item.snippet?.title || '',
+        };
+    }
+    return out;
+}
+
+async function refreshWebcamStats() {
+    if (!YT_API_KEY) {
+        webcamStats = { entries: [], ts: Date.now(), enabled: false };
+        return;
+    }
+    try {
+        // Dedupe channels — several cams share a channel (e.g. EarthCam).
+        const uniqueChannels = [...new Set(WEBCAM_CHANNELS.map(w => w.channel))];
+        const channelToVideo = {};
+        for (const ch of uniqueChannels) {
+            try {
+                channelToVideo[ch] = await ytFetchLiveVideo(ch);
+            } catch { channelToVideo[ch] = null; }
+        }
+        const videoIds = [...new Set(Object.values(channelToVideo).filter(Boolean))];
+        const viewers = await ytFetchViewers(videoIds);
+
+        const entries = WEBCAM_CHANNELS.map(w => {
+            const vid = channelToVideo[w.channel];
+            const info = vid ? viewers[vid] : null;
+            return {
+                id: w.id,
+                videoId: vid || null,
+                viewers: info?.viewers || 0,
+                title: info?.title || '',
+            };
+        });
+
+        webcamStats = { entries, ts: Date.now(), enabled: true };
+        console.log(`Webcams: YT viewer stats refreshed (${entries.filter(e => e.viewers).length} live)`);
+    } catch (err) {
+        console.error('Webcam stats error:', err.message);
+    }
+}
+
+if (YT_API_KEY) {
+    refreshWebcamStats();
+    setInterval(refreshWebcamStats, WEBCAM_REFRESH);
+}
+
+app.get('/api/webcams/stats', (req, res) => {
+    res.json(webcamStats);
+});
+
+// Global Power Plant Database (WRI). ~35k plants worldwide; we filter to
+// capacity >= 100 MW (~10k plants) and keep only the fields we render.
+const POWERPLANT_URL = 'https://github.com/wri/global-power-plant-database/raw/master/output_database/global_power_plant_database.csv';
+const POWERPLANT_MIN_MW = 100;
+const POWERPLANT_REFRESH = 7 * 24 * 60 * 60 * 1000; // weekly
+
+let powerplantCache = { plants: [], ts: 0 };
+
+function parseCsvLine(line) {
+    const out = [];
+    let cur = '';
+    let inQ = false;
+    for (let i = 0; i < line.length; i++) {
+        const c = line[i];
+        if (c === '"') {
+            if (inQ && line[i + 1] === '"') { cur += '"'; i++; }
+            else inQ = !inQ;
+        } else if (c === ',' && !inQ) {
+            out.push(cur); cur = '';
+        } else cur += c;
+    }
+    out.push(cur);
+    return out;
+}
+
+async function refreshPowerplants() {
+    try {
+        const r = await fetch(POWERPLANT_URL);
+        if (!r.ok) throw new Error(`WRI ${r.status}`);
+        const text = await r.text();
+        const lines = text.split(/\r?\n/);
+        const header = parseCsvLine(lines[0]);
+        const idx = (name) => header.indexOf(name);
+        const iName = idx('name');
+        const iCountry = idx('country_long');
+        const iCap = idx('capacity_mw');
+        const iLat = idx('latitude');
+        const iLon = idx('longitude');
+        const iFuel = idx('primary_fuel');
+        const iOwner = idx('owner');
+        const iYear = idx('commissioning_year');
+
+        const plants = [];
+        for (let i = 1; i < lines.length; i++) {
+            if (!lines[i]) continue;
+            const c = parseCsvLine(lines[i]);
+            const cap = parseFloat(c[iCap]);
+            if (!isFinite(cap) || cap < POWERPLANT_MIN_MW) continue;
+            const lat = parseFloat(c[iLat]);
+            const lon = parseFloat(c[iLon]);
+            if (!isFinite(lat) || !isFinite(lon)) continue;
+            plants.push({
+                n: c[iName] || '',
+                co: c[iCountry] || '',
+                mw: Math.round(cap),
+                lat, lon,
+                f: c[iFuel] || '',
+                o: c[iOwner] || '',
+                y: c[iYear] ? parseInt(c[iYear], 10) || null : null,
+            });
+        }
+        powerplantCache = { plants, ts: Date.now() };
+        console.log(`Power plants: ${plants.length} cached (>=${POWERPLANT_MIN_MW}MW)`);
+    } catch (err) {
+        console.error('Power plant refresh error:', err.message);
+    }
+}
+
+app.get('/api/powerplants', (req, res) => {
+    res.json({ plants: powerplantCache.plants, ts: powerplantCache.ts, total: powerplantCache.plants.length });
+});
+
+// Fetch in the background so startup isn't blocked on an 11 MB download.
+refreshPowerplants();
+setInterval(refreshPowerplants, POWERPLANT_REFRESH);
+
+// Celestrak TLE proxy for the "visual" satellite group (bright, naked-eye
+// visible). Cached 12h since TLEs change slowly.
+let satTleCache = { sats: [], ts: 0 };
+const SAT_TLE_TTL = 12 * 60 * 60 * 1000;
+
+async function refreshSatTle() {
+    try {
+        const r = await fetch('https://celestrak.org/NORAD/elements/gp.php?GROUP=visual&FORMAT=TLE');
+        if (!r.ok) throw new Error(`Celestrak ${r.status}`);
+        const text = await r.text();
+        const lines = text.split('\n').map(l => l.trimEnd()).filter(Boolean);
+        const sats = [];
+        for (let i = 0; i + 2 < lines.length; i += 3) {
+            sats.push({ name: lines[i].trim(), l1: lines[i + 1], l2: lines[i + 2] });
+        }
+        satTleCache = { sats, ts: Date.now() };
+        console.log(`Satellites: ${sats.length} TLEs cached`);
+    } catch (err) {
+        console.error('Celestrak refresh error:', err.message);
+    }
+}
+
+app.get('/api/satellites/tle', async (req, res) => {
+    if (!satTleCache.sats.length || Date.now() - satTleCache.ts > SAT_TLE_TTL) {
+        await refreshSatTle();
+    }
+    res.json({ sats: satTleCache.sats, ts: satTleCache.ts });
+});
+
+refreshSatTle();
+
+// Aurora oval + Kp index (NOAA SWPC). Proxied + cached to shrink payload —
+// the raw file is 900 KB with mostly-zero cells; we filter to the lit oval.
+let auroraCache = { data: null, ts: 0 };
+const AURORA_TTL = 15 * 60 * 1000;
+
+app.get('/api/aurora', async (req, res) => {
+    if (auroraCache.data && Date.now() - auroraCache.ts < AURORA_TTL) {
+        return res.json(auroraCache.data);
+    }
+    try {
+        const [ovRes, kpRes] = await Promise.all([
+            fetch('https://services.swpc.noaa.gov/json/ovation_aurora_latest.json'),
+            fetch('https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json'),
+        ]);
+        if (!ovRes.ok) throw new Error(`Ovation ${ovRes.status}`);
+        const ov = await ovRes.json();
+        const filtered = (ov.coordinates || []).filter(c => c[2] >= 3);
+
+        let kp = null;
+        if (kpRes.ok) {
+            const kpData = await kpRes.json();
+            const last = kpData[kpData.length - 1];
+            if (last && last.Kp != null) kp = { value: last.Kp, time: last.time_tag };
+        }
+
+        auroraCache = {
+            data: {
+                coordinates: filtered,
+                observationTime: ov['Observation Time'],
+                forecastTime: ov['Forecast Time'],
+                kp,
+            },
+            ts: Date.now(),
+        };
+        res.json(auroraCache.data);
+    } catch (err) { res.status(502).json({ error: err.message }); }
+});
+
 app.get('/api/cables', async (req, res) => {
     if (cablesCache.data && Date.now() - cablesCache.ts < CABLES_TTL) {
         return res.json(cablesCache.data);
