@@ -1221,3 +1221,140 @@
         max-width: none;
     }
 }
+
+/* ── OSINT Tools: pick-mode cursors ── */
+.leaflet-container.sun-tool-active,
+.leaflet-container.mapillary-tool-active {
+    cursor: crosshair !important;
+}
+
+/* SunCalc popup controls */
+.sun-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+    font-size: 0.78rem;
+}
+.sun-controls label {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--text-secondary);
+}
+.sun-controls input[type="date"],
+.sun-controls input[type="time"] {
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    border-radius: var(--radius-sm);
+    padding: 2px 4px;
+    font-size: 0.78rem;
+}
+.sun-controls .sun-now {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    color: var(--text-accent);
+    padding: 2px 8px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-size: 0.78rem;
+}
+.sun-controls .sun-now:hover { border-color: var(--border-active); }
+
+/* Mapillary ground-view thumbnails */
+.mly-thumbs {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 4px;
+    margin: 6px 0;
+}
+.mly-thumb {
+    position: relative;
+    display: block;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    line-height: 0;
+}
+.mly-thumb:hover { border-color: var(--border-active); }
+.mly-thumb img {
+    width: 100%;
+    height: 80px;
+    object-fit: cover;
+    display: block;
+}
+.mly-thumb .mly-pano {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    font-size: 0.65rem;
+    background: rgba(0, 0, 0, 0.7);
+    color: var(--text-accent);
+    padding: 1px 4px;
+    border-radius: 2px;
+    line-height: 1.2;
+}
+
+/* AOI watchbox label */
+.measure-label.aoi-label {
+    color: #ff4455 !important;
+    border-color: #ff4455 !important;
+}
+
+/* Sanctions panel inside vessel popup */
+.sanctions-panel {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+}
+.sanctions-btn {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    color: var(--text-accent);
+    padding: 4px 10px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-size: 0.78rem;
+    width: 100%;
+}
+.sanctions-btn:hover:not(:disabled) { border-color: var(--border-active); }
+.sanctions-btn:disabled { opacity: 0.6; cursor: wait; }
+
+.sanctions-body { margin-top: 6px; }
+.sanctions-row { font-size: 0.78rem; padding: 2px 0; }
+.sanctions-clean { color: var(--success); }
+.sanctions-err { color: var(--warning); }
+.sanctions-hit-header {
+    color: var(--danger);
+    font-weight: 600;
+    padding-bottom: 4px;
+}
+.sanctions-hit {
+    border-left: 2px solid var(--danger);
+    padding: 4px 6px;
+    margin-top: 4px;
+    background: rgba(255, 68, 85, 0.06);
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+.sanctions-hit-name {
+    font-size: 0.82rem;
+    font-weight: 500;
+}
+.sanctions-hit-name a { color: var(--text-primary); text-decoration: none; }
+.sanctions-hit-name a:hover { color: var(--accent); }
+.sanctions-hit-schema {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    margin-left: 4px;
+}
+.sanctions-hit-meta {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 2px;
+}

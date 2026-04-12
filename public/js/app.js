@@ -15,6 +15,10 @@ import { initAuroraLayer, setEnabled as setAuroraEnabled } from './layers/aurora
 import { initSatellitesLayer, setEnabled as setSatellitesEnabled } from './layers/satellites.js';
 import { initPowerPlantsLayer, setEnabled as setPowerPlantsEnabled } from './layers/powerplants.js';
 import { initWebcamsLayer, setEnabled as setWebcamsEnabled } from './layers/webcams.js';
+import { initFirmsLayer, setEnabled as setFirmsEnabled } from './layers/firms.js';
+import { initSunTool, setEnabled as setSunEnabled } from './suncalc.js';
+import { initMapillaryTool, setEnabled as setGroundViewEnabled } from './mapillary.js';
+import { initAoiTool, setEnabled as setAoiEnabled } from './aoi.js';
 import { initMeasureTool } from './measure.js';
 import { initHotSpots } from './hotspots.js';
 import { initSearch } from './search.js';
@@ -71,7 +75,13 @@ function init() {
     initSatellitesLayer(map);
     initPowerPlantsLayer(map);
     initWebcamsLayer(map);
+    initFirmsLayer(map);
     initMeasureTool(map);
+    // AOI relies on geoman's pm:create events, so it must init *after* the
+    // measure tool has added the drawing toolbar.
+    initAoiTool(map);
+    initSunTool(map);
+    initMapillaryTool(map);
     initSearch(map);
 
     // Wire up layer toggles
@@ -234,6 +244,32 @@ function setupLayerToggles() {
 
     document.getElementById('layer-webcams').addEventListener('change', (e) => {
         setWebcamsEnabled(e.target.checked);
+    });
+
+    document.getElementById('layer-firms').addEventListener('change', (e) => {
+        setFirmsEnabled(e.target.checked);
+    });
+
+    // Sun and Ground View both use map-click pick mode, so only one should
+    // be armed at a time — flipping one on turns the other off.
+    document.getElementById('layer-suntool').addEventListener('change', (e) => {
+        setSunEnabled(e.target.checked);
+        if (e.target.checked) {
+            const other = document.getElementById('layer-groundview');
+            if (other?.checked) { other.checked = false; setGroundViewEnabled(false); }
+        }
+    });
+
+    document.getElementById('layer-groundview').addEventListener('change', (e) => {
+        setGroundViewEnabled(e.target.checked);
+        if (e.target.checked) {
+            const other = document.getElementById('layer-suntool');
+            if (other?.checked) { other.checked = false; setSunEnabled(false); }
+        }
+    });
+
+    document.getElementById('layer-aoi').addEventListener('change', (e) => {
+        setAoiEnabled(e.target.checked);
     });
 
     document.getElementById('layer-clouds').addEventListener('change', (e) => {

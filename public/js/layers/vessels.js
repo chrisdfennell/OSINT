@@ -3,6 +3,7 @@
 // Renders ship silhouettes on canvas (same pattern as flights)
 
 import { showToast } from '../toast.js';
+import { checkSanctions, renderSanctionsResult } from '../sanctions.js';
 
 const REFRESH_INTERVAL = 15000; // 15 seconds
 const MOVE_DEBOUNCE = 2000;
@@ -126,7 +127,38 @@ function buildPopup(v) {
         <div class="popup-row"><span class="popup-label">Course</span><span class="popup-value">${course}</span></div>
         <div class="popup-row"><span class="popup-label">Heading</span><span class="popup-value">${heading}</span></div>
         <div class="popup-row"><span class="popup-label">Destination</span><span class="popup-value">${dest}</span></div>
+        <div class="sanctions-panel" data-mmsi="${mmsi}" data-imo="${v.imo || ''}" data-name="${encodeURIComponent(name)}">
+            <button class="sanctions-btn" type="button">Check OpenSanctions</button>
+            <div class="sanctions-body"></div>
+        </div>
     `;
+}
+
+function wireSanctionsButton(popupEl, v) {
+    const panel = popupEl.querySelector('.sanctions-panel');
+    if (!panel) return;
+    const btn = panel.querySelector('.sanctions-btn');
+    const body = panel.querySelector('.sanctions-body');
+    if (!btn || !body) return;
+
+    btn.addEventListener('click', async () => {
+        btn.disabled = true;
+        btn.textContent = 'Checking…';
+        // Query in order of most-specific identifier → name. Stop at first hit.
+        const queries = [];
+        if (v.imo) queries.push(`IMO ${v.imo}`);
+        if (v.mmsi) queries.push(`MMSI ${v.mmsi}`);
+        if (v.name) queries.push(v.name);
+
+        let best = { results: [] };
+        for (const q of queries) {
+            const r = await checkSanctions(q);
+            if (r.results && r.results.length) { best = r; break; }
+            if (!best.results.length) best = r;
+        }
+        body.innerHTML = renderSanctionsResult(best);
+        btn.style.display = 'none';
+    });
 }
 
 function renderViewport() {
@@ -152,7 +184,11 @@ function renderViewport() {
             stroke: false,
             interactive: true,
             bubblingMouseEvents: false,
-        }).bindPopup(buildPopup(v), { maxWidth: 300 });
+        }).bindPopup(buildPopup(v), { maxWidth: 320 });
+        marker.on('popupopen', (e) => {
+            const el = e.popup.getElement();
+            if (el) wireSanctionsButton(el, v);
+        });
 
         layerGroup.addLayer(marker);
         count++;

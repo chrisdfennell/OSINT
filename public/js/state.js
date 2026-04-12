@@ -4,9 +4,10 @@
 // Format: #m=lat,lon,zoom&l=ids,separated,by,comma&b=dark|satellite|streets
 
 const LAYER_IDS = [
-    'flights', 'earthquakes', 'fires', 'volcanoes', 'cyclones', 'vessels',
+    'flights', 'earthquakes', 'fires', 'firms', 'volcanoes', 'cyclones', 'vessels',
     'weather', 'nexrad', 'rainviewer', 'clouds', 'wind', 'temp',
     'gdelt', 'lightning', 'iss', 'satellites', 'aurora', 'airquality', 'cables', 'powerplants', 'webcams',
+    'suntool', 'groundview', 'aoi',
 ];
 
 const HASH_DEBOUNCE_MS = 250;

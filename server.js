@@ -1155,6 +1155,191 @@ app.get('/api/weather/rainviewer', async (req, res) => {
 
 app.get('/api/config/owm', (req, res) => res.json({ key: process.env.OWM_API_KEY || '' }));
 
+// ── FIRMS: raw NASA thermal hotspots (VIIRS/MODIS) ──
+// FIRMS is the actual per-pixel thermal-anomaly detection feed, distinct from
+// EONET's curated wildfire events. Useful for catching industrial fires,
+// artillery impacts, oil-field flares — things EONET would never list.
+// Requires FIRMS_MAP_KEY (free from firms.modaps.eosdis.nasa.gov/api/map_key).
+
+const FIRMS_MAP_KEY = process.env.FIRMS_MAP_KEY || '';
+const FIRMS_TTL = 10 * 60 * 1000;
+const FIRMS_MAX = 20000;
+// Source options: VIIRS_SNPP_NRT (best resolution), VIIRS_NOAA20_NRT,
+// MODIS_NRT. VIIRS_SNPP has ~375m pixels, strongest overall signal.
+const FIRMS_SOURCE = 'VIIRS_SNPP_NRT';
+
+let firmsCache = { hotspots: [], ts: 0 };
+
+async function refreshFirms() {
+    if (!FIRMS_MAP_KEY) return;
+    try {
+        const url = `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${FIRMS_MAP_KEY}/${FIRMS_SOURCE}/world/1`;
+        const r = await fetch(url);
+        if (!r.ok) throw new Error(`FIRMS ${r.status}`);
+        const text = await r.text();
+        const lines = text.split(/\r?\n/);
+        if (lines.length < 2) throw new Error('empty FIRMS response');
+
+        const header = lines[0].split(',');
+        const idx = (n) => header.indexOf(n);
+        const iLat = idx('latitude');
+        const iLon = idx('longitude');
+        const iBright = idx('bright_ti4') !== -1 ? idx('bright_ti4') : idx('brightness');
+        const iConf = idx('confidence');
+        const iDate = idx('acq_date');
+        const iTime = idx('acq_time');
+        const iFrp = idx('frp');
+        const iDayNight = idx('daynight');
+
+        const hotspots = [];
+        for (let i = 1; i < lines.length && hotspots.length < FIRMS_MAX; i++) {
+            if (!lines[i]) continue;
+            const c = lines[i].split(',');
+            const lat = parseFloat(c[iLat]);
+            const lon = parseFloat(c[iLon]);
+            if (!isFinite(lat) || !isFinite(lon)) continue;
+            hotspots.push({
+                lat, lon,
+                brightness: parseFloat(c[iBright]) || 0,
+                confidence: c[iConf] || '',
+                date: c[iDate] || '',
+                time: c[iTime] || '',
+                frp: parseFloat(c[iFrp]) || 0,
+                dn: c[iDayNight] || '',
+            });
+        }
+        firmsCache = { hotspots, ts: Date.now() };
+        console.log(`FIRMS: ${hotspots.length} thermal hotspots (${FIRMS_SOURCE})`);
+    } catch (err) {
+        console.error('FIRMS refresh error:', err.message);
+    }
+}
+
+if (FIRMS_MAP_KEY) {
+    refreshFirms();
+    setInterval(refreshFirms, FIRMS_TTL);
+} else {
+    console.log('No FIRMS_MAP_KEY — thermal hotspots layer disabled.');
+}
+
+app.get('/api/firms', (req, res) => {
+    if (!FIRMS_MAP_KEY) {
+        return res.json({ hotspots: [], ts: 0, total: 0, active: false });
+    }
+    res.json({
+        hotspots: firmsCache.hotspots,
+        ts: firmsCache.ts,
+        total: firmsCache.hotspots.length,
+        source: FIRMS_SOURCE,
+        active: true,
+    });
+});
+
+// ── OpenSanctions: vessel / person / entity lookup ──
+// Free public API. Rate-limited; we cache per-query for 1h to be polite.
+
+const SANCTIONS_TTL = 60 * 60 * 1000;
+const sanctionsCache = new Map();
+
+app.get('/api/sanctions/search', async (req, res) => {
+    const q = (req.query.q || '').toString().trim();
+    if (!q) return res.status(400).json({ error: 'missing q' });
+
+    const key = q.toLowerCase();
+    const cached = sanctionsCache.get(key);
+    if (cached && Date.now() - cached.ts < SANCTIONS_TTL) {
+        return res.json(cached.data);
+    }
+    try {
+        const url = `https://api.opensanctions.org/search/default?q=${encodeURIComponent(q)}&limit=5`;
+        const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
+        if (!r.ok) throw new Error(`OpenSanctions ${r.status}`);
+        const body = await r.json();
+        // Slim the response: only fields we actually render.
+        const results = (body.results || []).map(m => ({
+            id: m.id,
+            caption: m.caption,
+            schema: m.schema,
+            score: m.score,
+            datasets: m.datasets || [],
+            countries: m.properties?.country || [],
+            topics: m.properties?.topics || [],
+            aliases: m.properties?.alias || [],
+            firstSeen: m.first_seen,
+            lastSeen: m.last_seen,
+        }));
+        const data = { query: q, results, total: body.total?.value || results.length };
+        sanctionsCache.set(key, { data, ts: Date.now() });
+        res.json(data);
+    } catch (err) {
+        res.status(502).json({ error: err.message });
+    }
+});
+
+// Prune sanctions cache periodically (prevent unbounded growth on a busy dash).
+setInterval(() => {
+    const cutoff = Date.now() - SANCTIONS_TTL;
+    for (const [k, v] of sanctionsCache) if (v.ts < cutoff) sanctionsCache.delete(k);
+}, SANCTIONS_TTL);
+
+// ── Mapillary nearest-image lookup ──
+// Returns the closest street-level photo to a lat/lon. Requires an
+// access token from mapillary.com/dashboard/developers.
+
+const MAPILLARY_TOKEN = process.env.MAPILLARY_TOKEN || '';
+const MAPILLARY_BBOX_DEG = 0.002; // ~200m box around the pick
+
+app.get('/api/mapillary/nearest', async (req, res) => {
+    if (!MAPILLARY_TOKEN) return res.json({ active: false, images: [] });
+
+    const lat = parseFloat(req.query.lat);
+    const lon = parseFloat(req.query.lon);
+    if (!isFinite(lat) || !isFinite(lon)) {
+        return res.status(400).json({ error: 'missing lat/lon' });
+    }
+    const box = [
+        lon - MAPILLARY_BBOX_DEG, lat - MAPILLARY_BBOX_DEG,
+        lon + MAPILLARY_BBOX_DEG, lat + MAPILLARY_BBOX_DEG,
+    ].join(',');
+    const fields = 'id,thumb_256_url,thumb_1024_url,captured_at,compass_angle,computed_geometry,is_pano';
+    const url = `https://graph.mapillary.com/images?access_token=${MAPILLARY_TOKEN}&fields=${fields}&bbox=${box}&limit=10`;
+    try {
+        const r = await fetch(url);
+        if (!r.ok) throw new Error(`Mapillary ${r.status}`);
+        const body = await r.json();
+        const images = (body.data || []).map(img => {
+            const coords = img.computed_geometry?.coordinates || [];
+            const iLon = coords[0], iLat = coords[1];
+            const dist = (iLat != null && iLon != null)
+                ? Math.hypot((iLat - lat) * 111320, (iLon - lon) * 111320 * Math.cos(lat * Math.PI / 180))
+                : null;
+            return {
+                id: img.id,
+                thumb: img.thumb_256_url || null,
+                large: img.thumb_1024_url || null,
+                capturedAt: img.captured_at || null,
+                heading: img.compass_angle ?? null,
+                lat: iLat ?? null,
+                lon: iLon ?? null,
+                distM: dist,
+                pano: !!img.is_pano,
+            };
+        }).filter(i => i.thumb).sort((a, b) => (a.distM ?? 1e12) - (b.distM ?? 1e12));
+        res.json({ active: true, images });
+    } catch (err) {
+        res.status(502).json({ error: err.message, active: true, images: [] });
+    }
+});
+
+// Exposed config flags so the client knows which tools are unlocked.
+app.get('/api/config/tools', (req, res) => {
+    res.json({
+        firms: !!FIRMS_MAP_KEY,
+        mapillary: !!MAPILLARY_TOKEN,
+        sanctions: true,
+    });
+});
+
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`OSINT Hub running at http://localhost:${PORT}`);
     console.log(`Flights: OpenSky Network (global)${FR24_TOKEN ? ' + FR24 enrichment' : ''}`);
